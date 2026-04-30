@@ -686,7 +686,7 @@ function buildQPDoc(qid, mergedState){
     question:    effectiveQ,
     options:     effectiveOpt,
     correct:     effectiveAns,
-    explanation: mergedState.explanation || orig.exp || '',
+    explanation: (typeof mergedState.userExp === 'string' && mergedState.userExp) ? mergedState.userExp : (mergedState.explanation || orig.exp || ''),
     topic:       orig.topic      || 'General EM',
     subtopic:    orig.subtopic   || '',
     difficulty:  orig.difficulty || 'medium',
@@ -737,6 +737,8 @@ function describePatch(patch){
   if (patch.userOpts === null) parts.push("reset options");
   else if (Array.isArray(patch.userOpts)) parts.push("edit options");
   if (typeof patch.note === "string") parts.push(patch.note ? "wrote note" : "cleared note");
+  if (patch.userExp === null) parts.push("reset explanation");
+  else if (typeof patch.userExp === "string") parts.push("edited explanation");
   if (patch.reviewed === true) parts.push("✓ reviewed");
   if (patch.reviewed === false) parts.push("✗ unreviewed");
   return parts.join(", ") || "update";
@@ -837,10 +839,11 @@ function isReviewed(q){ return !!getR(q.__id).reviewed; }
 function userAnsOf(q){ const r = getR(q.__id); return (typeof r.userAns === "number") ? r.userAns : null; }
 function isChanged(q){ const ua = userAnsOf(q); return ua !== null && ua !== q.ans; }
 function isAgreed(q){ const ua = userAnsOf(q); return ua !== null && ua === q.ans; }
-function isEdited(q){ const r = getR(q.__id); return (typeof r.userQ === "string") || Array.isArray(r.userOpts); }
+function isEdited(q){ const r = getR(q.__id); return (typeof r.userQ === "string") || Array.isArray(r.userOpts) || (typeof r.userExp === "string"); }
 function hasImage(q){ const r = getR(q.__id); return !!(r.imageUrl); }
 function effectiveQ(q){ const r = getR(q.__id); return (typeof r.userQ === "string" && r.userQ.length > 0) ? r.userQ : q.q; }
 function effectiveOpts(q){ const r = getR(q.__id); return (Array.isArray(r.userOpts) && r.userOpts.length > 0) ? r.userOpts : (q.opts || []); }
+function effectiveExp(q){ const r = getR(q.__id); return (typeof r.userExp === "string" && r.userExp.length > 0) ? r.userExp : (q.exp || ""); }
 function lastEditorOf(q){
   const r = getR(q.__id);
   if (!r.editedBy && !r.editedAt) return null;
@@ -1212,12 +1215,15 @@ function buildCard(q, displayIndex){
       <label>Options (the correct answer follows the index)</label>
       <div data-edit="opts"></div>
       <button data-action="addopt" style="font-size:12px;padding:6px 10px">+ Add option</button>
+      <label style="margin-top:14px">Explanation &amp; reference</label>
+      <textarea data-edit="exp" rows="4" placeholder="High-yield reasoning + textbook citation"></textarea>
       <div class="ctrls">
         <button data-action="save" class="primary">Save changes</button>
         <button data-action="reset">Reset to original</button>
         <button data-action="cancel">Cancel</button>
       </div>`;
     const taQ = box.querySelector('[data-edit="q"]'); taQ.value = curQ;
+    const taExp = box.querySelector('[data-edit="exp"]'); if (taExp) taExp.value = effectiveExp(q);
     const optsHost = box.querySelector('[data-edit="opts"]');
     function renderOptInputs(arr){
       optsHost.innerHTML = "";
@@ -1246,9 +1252,11 @@ function buildCard(q, displayIndex){
       const newQ = taQ.value.trim();
       const newOpts = Array.from(optsHost.querySelectorAll('input')).map(x => x.value).filter(s => s.length > 0);
       if (newOpts.length < 2){ toast("Need at least 2 options", true); return; }
+      const newExp = (taExp && taExp.value || "").trim();
       const patch = { __editing: false };
       if (newQ && newQ !== q.q) patch.userQ = newQ; else patch.userQ = null;
       if (JSON.stringify(newOpts) !== JSON.stringify(q.opts)) patch.userOpts = newOpts; else patch.userOpts = null;
+      if (newExp && newExp !== (q.exp||"")) patch.userExp = newExp; else patch.userExp = null;
       const cur = STATE[q.__id] || {};
       if (typeof cur.userAns === "number" && cur.userAns >= newOpts.length) patch.userAns = newOpts.length - 1;
       pushQuestionUpdate(q.__id, patch);
@@ -1256,7 +1264,7 @@ function buildCard(q, displayIndex){
     });
     box.querySelector('[data-action="reset"]').addEventListener("click", () => {
       if (!confirm("Reset to the original question and options (clears cloud edit)?")) return;
-      pushQuestionUpdate(q.__id, { userQ: null, userOpts: null, __editing: false });
+      pushQuestionUpdate(q.__id, { userQ: null, userOpts: null, userExp: null, __editing: false });
     });
     box.querySelector('[data-action="cancel"]').addEventListener("click", () => {
       const cur = STATE[q.__id] || {}; cur.__editing = false; STATE[q.__id] = cur;
@@ -1294,7 +1302,8 @@ function buildCard(q, displayIndex){
   }
 
   const details = document.createElement("details");
-  details.innerHTML = `<summary>AI explanation &amp; reference</summary><div class="exp">${escapeHTML(q.exp || "(none)")}</div>`;
+  const expIsEdited = (typeof getR(q.__id).userExp === "string");
+  details.innerHTML = `<summary>AI explanation &amp; reference${expIsEdited ? " <span class='pill edited' style='margin-left:6px'>edited</span>" : ""}</summary><div class="exp">${escapeHTML(effectiveExp(q) || "(none)")}</div>`;
   card.appendChild(details);
 
   const noteWrap = document.createElement("details");
@@ -1524,8 +1533,9 @@ function buildExport(){
     const useOpts = (Array.isArray(r.userOpts) && r.userOpts.length > 0) ? r.userOpts : q.opts;
     let userAns = (typeof r.userAns === "number") ? r.userAns : q.ans;
     if (typeof userAns !== "number" || userAns < 0 || userAns >= useOpts.length) userAns = 0;
+    const useExp = (typeof r.userExp === "string" && r.userExp.length > 0) ? r.userExp : (q.exp || "");
     const merged = {
-      q: useQ, opts: useOpts, ans: userAns, exp: q.exp || "",
+      q: useQ, opts: useOpts, ans: userAns, exp: useExp,
       topic: q.topic, subtopic: q.subtopic, difficulty: q.difficulty,
       confidence: q.confidence, source: q.source, year: q.year, page: q.page,
       hasAnswer: true,
