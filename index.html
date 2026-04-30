@@ -664,15 +664,20 @@ function subscribeToCloud(){
   try {
     const col = questionsCollection();
     UNSUB = onSnapshot(col, snap => {
+      const myName = REVIEWER || "anon";
       let updates = 0;
       snap.docChanges().forEach(ch => {
         const qid = ch.doc.id;
         if (ch.type === "removed"){
           delete STATE[qid];
+          updates++;
         } else {
-          STATE[qid] = ch.doc.data();
+          const data = ch.doc.data();
+          STATE[qid] = data;
+          // Only rerender when ANOTHER reviewer edited — our own writes are
+          // already reflected locally (or should not re-focus a typing user).
+          if (data.editedBy !== myName) updates++;
         }
-        updates++;
       });
       if (updates > 0) rerender();
       setCloudStatus("on", `synced (${snap.size} tracked)`);
@@ -825,7 +830,11 @@ async function pushQuestionUpdate(qid, patch){
   STATE[qid] = Object.assign({}, STATE[qid] || {}, patch);
   STATE[qid].editedBy = merged.editedBy;
   STATE[qid].editedAt = { _local: Date.now() };
-  rerender();
+  // Note-only patches don't need DOM rebuild — the textarea already shows the
+  // user's typing. Rebuilding here would steal focus and interrupt typing.
+  const __keys = Object.keys(patch);
+  const __noteOnly = __keys.length === 1 && __keys[0] === "note";
+  if (!__noteOnly) rerender();
   try {
     await setDoc(questionDoc(qid), merged, { merge: true });
     logActivity(qid, describePatch(patch));
@@ -1392,13 +1401,74 @@ function buildCard(q, displayIndex){
   return card;
 }
 
+// --- UI state preservation across rerender --------------------------------
+// rerender() rebuilds every .qcard from scratch, which collapses any open
+// <details> panel and drops keyboard focus. The user reported that the
+// "Group note (synced)" panel folds back closed mid-typing. We capture
+// open state + focus + cursor before the wipe and restore them after.
+function captureUiState(){
+  const open = new Map();
+  document.querySelectorAll(".qcard details").forEach(d => {
+    const card = d.closest(".qcard");
+    if (!card) return;
+    const sum = d.querySelector("summary");
+    const label = sum ? sum.textContent.trim() : "";
+    open.set(card.dataset.id + "::" + label, !!d.open);
+  });
+  let focus = null;
+  const a = document.activeElement;
+  if (a && (a.tagName === "TEXTAREA" || a.tagName === "INPUT")){
+    const card = a.closest(".qcard");
+    if (card){
+      let kind = null;
+      if (a.classList.contains("note"))                 kind = "note";
+      else if (a.matches('[data-edit="q"]'))            kind = "edit-q";
+      else if (a.matches('[data-edit="exp"]'))          kind = "edit-exp";
+      if (kind){
+        let sel = [0, 0];
+        try { sel = [a.selectionStart, a.selectionEnd]; } catch(e){}
+        focus = { qid: card.dataset.id, kind, sel };
+      }
+    }
+  }
+  return { open, focus };
+}
+function restoreUiState(s){
+  if (!s) return;
+  // Re-open <details> that were open before
+  if (s.open){
+    document.querySelectorAll(".qcard details").forEach(d => {
+      const card = d.closest(".qcard");
+      if (!card) return;
+      const sum = d.querySelector("summary");
+      const label = sum ? sum.textContent.trim() : "";
+      const key = card.dataset.id + "::" + label;
+      if (s.open.has(key)) d.open = s.open.get(key);
+    });
+  }
+  // Restore focus + cursor
+  if (s.focus){
+    const card = document.querySelector(`.qcard[data-id="${s.focus.qid}"]`);
+    if (card){
+      let el = null;
+      if      (s.focus.kind === "note")     el = card.querySelector("textarea.note");
+      else if (s.focus.kind === "edit-q")   el = card.querySelector('[data-edit="q"]');
+      else if (s.focus.kind === "edit-exp") el = card.querySelector('[data-edit="exp"]');
+      if (el){
+        el.focus();
+        try { el.setSelectionRange(s.focus.sel[0], s.focus.sel[1]); } catch(e){}
+      }
+    }
+  }
+}
 let allCollapsed = false;
 function rerender(){
+  const __ui = captureUiState();
   root.innerHTML = "";
 
   if (POOL.length === 0){
     root.appendChild(renderSplash());
-    updateStats();
+    updateStats(); restoreUiState(__ui);
     return;
   }
 
@@ -1408,7 +1478,7 @@ function rerender(){
   if (filtered.length === 0){
     const e = document.createElement("div"); e.className = "empty"; e.textContent = "No questions match these filters.";
     root.appendChild(e);
-    updateStats();
+    updateStats(); restoreUiState(__ui);
     return;
   }
 
@@ -1420,7 +1490,7 @@ function rerender(){
     });
     let n = 0;
     arr.forEach(q => { n++; root.appendChild(buildCard(q, n)); });
-    updateStats();
+    updateStats(); restoreUiState(__ui);
     return;
   }
 
@@ -1453,7 +1523,7 @@ function rerender(){
       root.appendChild(group);
     });
   }
-  updateStats();
+  updateStats(); restoreUiState(__ui);
 }
 
 function updateStats(){
