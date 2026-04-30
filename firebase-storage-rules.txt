@@ -5,12 +5,30 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
 
-    //   /quizReviews/_pools/v{X.Y}.json
-    //   /quizReviews/v{X.Y}/{qid}.jpg
-    match /quizReviews/{poolVersion}/{file} {
-      allow read, write: if true;
+    // Chapter HTML files — uploaded by Host, read by all users
+    match /chapters/{filename} {
+      allow read: if true;
+      allow write: if true;
     }
 
-    // Keep your existing rules for everything else here.
+    // Quiz pool question images — uploaded via Host Panel quiz pool manager
+    match /quiz_images/{filename} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Image Quiz photos — uploaded by Host for Time Attack mode
+    match /imageQuizzes/{filename} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Reviewer Tool — pool JSON files + per-question images
+    //   /quizReviews/_pools/v{X.Y}.json
+    //   /quizReviews/v{X.Y}/{qid}.jpg
+    match /quizReviews/{allPaths=**} {
+      allow read: if true;
+      allow write: if true;
+    }
   }
 }

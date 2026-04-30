@@ -4,22 +4,18 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Reviewer state (per-pool-version, per-question)
-    match /quizReviews/{poolVersion}/questions/{qid} {
+    // quiz_pool — read by Web App (onSnapshot), written by Reviewer Tool + Host Panel
+    match /quiz_pool/{docId} {
+      allow read: if true;
+      allow write: if true;
+    }
+    // quizReviews — Reviewer Tool workspace (real-time review patches + pool meta + audit_log)
+    match /quizReviews/{document=**} {
       allow read, write: if true;
     }
-    match /quizReviews/{poolVersion} {
+    // All other collections (users, chapters, quizzes, config, imageQuizzes, etc.)
+    match /{document=**} {
       allow read, write: if true;
     }
-    // (active-pool pointer at quizReviews/_meta is matched by the rule above)
-
-    // Web App reads quiz questions from this top-level collection.
-    // The Reviewer batch-seeds it on every UPLOAD POOL.
-    match /quiz_pool/{qid} {
-      allow read, write: if true;
-    }
-
-    // Keep your existing rules for everything else here.
   }
 }
