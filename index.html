@@ -80,7 +80,7 @@
   .topic-head{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px;cursor:pointer}
   .topic-head h2{margin:0;font-size:15px;font-weight:600;color:var(--accent-2)}
   .topic-meta{color:var(--muted);font-size:12px}
-  .qcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;transition:border-color .15s ease;scroll-margin-top:140px}
+  .qcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;transition:border-color .15s ease;scroll-margin-top:140px;content-visibility:auto;contain-intrinsic-size:0 280px}
   .qcard.reviewed{border-color:#14532d}
   .qcard.changed{border-color:#92400e}
   .qcard.edited{border-color:#92400e}
@@ -181,6 +181,9 @@
     .actions{flex-direction:column;align-items:stretch}
     /* Header pills shrink */
     h1 .pill{font-size:10px;padding:1px 6px}
+    /* Drop GPU-heavy blur on mobile to keep typing smooth */
+    header{backdrop-filter:none;-webkit-backdrop-filter:none}
+    footer.bar{backdrop-filter:none;-webkit-backdrop-filter:none}
   }
   /* Filters button is hidden on desktop; toggled-in only via mobile media */
   #btnFilters{display:none}
@@ -578,7 +581,7 @@ function subscribeToHostQuestions(){
     });
     if (dirty > 0){
       populateTopicFilter();
-      rerender();
+      scheduleRerender();
     }
   }, err => console.warn('host pool listener error:', err.message));
 }
@@ -674,7 +677,7 @@ function subscribeToCloud(){
         }
         updates++;
       });
-      if (updates > 0) rerender();
+      if (updates > 0) scheduleRerender();
       setCloudStatus("on", `synced (${snap.size} tracked)`);
     }, err => {
       console.error("Firestore listener error", err);
@@ -1457,6 +1460,15 @@ function restoreUiState(s){
       }
     }
   }
+}
+let __rafScheduled = false;
+function scheduleRerender(){
+  if (__rafScheduled) return;
+  __rafScheduled = true;
+  requestAnimationFrame(() => {
+    __rafScheduled = false;
+    rerender();
+  });
 }
 let allCollapsed = false;
 function rerender(){
