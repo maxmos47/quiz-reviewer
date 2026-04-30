@@ -31,6 +31,8 @@
   button.primary:hover{filter:brightness(1.1)}
   button.send{background:linear-gradient(180deg,#16a34a,#15803d);border-color:#166534}
   button.send:hover{filter:brightness(1.1)}
+  button.del{background:#451a1a;color:#fca5a5;border-color:#7f1d1d}
+  button.del:hover{background:#7f1d1d;color:#fff}
   button:disabled{opacity:.45;cursor:not-allowed}
   .stats{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--muted)}
   .stats b{color:var(--text)}
@@ -47,6 +49,7 @@
   .pill.uploaded{color:#a5f3fc;border-color:#155e75;background:#062734}
   .pill.fetched{color:#cbd5e1}
   .pill.cloud{color:#86efac;border-color:#14532d;background:#052e16}
+  .pill.host{color:#c4b5fd;border-color:#5b21b6;background:#1e1b4b}
   .pill.schema{color:#fde68a;border-color:#78350f;background:#1f1305}
   .pill.cloud-on{color:#86efac;border-color:#14532d;background:#052e16}
   .pill.cloud-off{color:#fca5a5;border-color:#7f1d1d;background:#180404}
@@ -167,7 +170,7 @@
       </div>
     </div>
     <div class="toolbar">
-      <input id="search" type="search" placeholder="Search question text, options, subtopic...">
+      <input id="search" type="search" placeholder="Search by q_xxxx, text, options, subtopic...">
       <select id="fTopic"><option value="">All topics</option></select>
       <select id="fConf">
         <option value="">All confidence</option>
@@ -312,6 +315,8 @@ let POOL_SOURCE = "empty";
 let POOL_SCHEMA = "v1";
 let STATE = {};        // local cache of cloud state, keyed by question.__id
 let POOL_MAP = {};     // keyed by question.__id → normalized question object
+let HOST_POOL = [];     // host-added questions from quiz_pool (h_*); merged into POOL
+let HOST_UNSUB = null;  // unsub for the quiz_pool listener
 let UNSUB = null;      // Firestore unsubscribe fn for the current pool
 let REVIEWER = "";
 
@@ -446,6 +451,70 @@ function setCloudStatus(state, label){
 function attachIds(pool){
   pool.forEach((q, i) => q.__id = "q_" + String(i+1).padStart(4, "0"));
 }
+// Convert a quiz_pool doc (Web App schema) into the standalone Reviewer's
+// internal v1 shape so the same render code handles it.
+function hostQpToInternal(id, data){
+  return {
+    __id: id,
+    __sourceId: data.id || id,
+    __isHostAdded: true,
+    q: data.question || '',
+    opts: Array.isArray(data.options) ? data.options : [],
+    ans: typeof data.correct === 'number' ? data.correct : 0,
+    exp: data.explanation || '',
+    topic: data.topic || 'Host-added',
+    subtopic: data.subtopic || '',
+    difficulty: data.difficulty || 'medium',
+    confidence: data.confidence || 'medium',
+    source: data.source || 'Host',
+    year: data.year || '',
+    page: data.page || null,
+    hasAnswer: !!data.hasAnswer
+  };
+}
+// Re-attach host-added questions to POOL after setActivePool replaces the array.
+function mergeHostPool(){
+  HOST_POOL.forEach(q => {
+    if (!POOL_MAP[q.__id]){
+      POOL.push(q);
+      POOL_MAP[q.__id] = q;
+    }
+  });
+}
+// Subscribe to quiz_pool. Any doc whose ID starts with `h_` is treated as a
+// host-added question and merged into POOL. Subscribe ONCE, persist across
+// pool version switches.
+function subscribeToHostQuestions(){
+  if (!cloudOK) return;
+  if (HOST_UNSUB){ HOST_UNSUB(); HOST_UNSUB = null; }
+  HOST_UNSUB = onSnapshot(collection(fbDb, 'quiz_pool'), snap => {
+    let dirty = 0;
+    snap.docChanges().forEach(ch => {
+      const id = ch.doc.id;
+      if (!id.startsWith('h_')) return;
+      if (ch.type === 'removed'){
+        const hi = HOST_POOL.findIndex(q => q.__id === id);
+        if (hi >= 0) HOST_POOL.splice(hi, 1);
+        const pi = POOL.findIndex(q => q.__id === id);
+        if (pi >= 0) POOL.splice(pi, 1);
+        delete POOL_MAP[id];
+        dirty++;
+        return;
+      }
+      const q = hostQpToInternal(id, ch.doc.data());
+      const hi = HOST_POOL.findIndex(qq => qq.__id === id);
+      if (hi >= 0) HOST_POOL[hi] = q; else HOST_POOL.push(q);
+      const pi = POOL.findIndex(qq => qq.__id === id);
+      if (pi >= 0) POOL[pi] = q; else POOL.push(q);
+      POOL_MAP[id] = q;
+      dirty++;
+    });
+    if (dirty > 0){
+      populateTopicFilter();
+      rerender();
+    }
+  }, err => console.warn('host pool listener error:', err.message));
+}
 function setActivePool(arr, version, source, schema){
   if (UNSUB){ UNSUB(); UNSUB = null; }
   POOL = arr;
@@ -462,6 +531,7 @@ function setActivePool(arr, version, source, schema){
   schPill.style.display = "";
   schPill.textContent = "schema " + POOL_SCHEMA;
   populateTopicFilter();
+  mergeHostPool();  // re-attach host-added questions after pool replacement
 
   if (cloudOK){
     subscribeToCloud();
@@ -537,7 +607,7 @@ function subscribeToCloud(){
         updates++;
       });
       if (updates > 0) rerender();
-      setCloudStatus("on", `synced (${snap.size} edits)`);
+      setCloudStatus("on", `synced (${snap.size} tracked)`);
     }, err => {
       console.error("Firestore listener error", err);
       setCloudStatus("off", "error: " + (err.code || err.message || "unknown"));
@@ -566,6 +636,7 @@ function buildQPDoc(qid, mergedState){
                        ? mergedState.userOpts : (orig.opts || []);
   return {
     id:          orig.__sourceId || qid,
+    __reviewerId: qid,
     question:    effectiveQ,
     options:     effectiveOpt,
     correct:     effectiveAns,
@@ -581,6 +652,28 @@ function buildQPDoc(qid, mergedState){
     imageH:      mergedState.imageH   || null,
     updatedAt:   serverTimestamp()
   };
+}
+// Soft-delete in quizReviews (so other reviewers hide it) AND hard-delete
+// from quiz_pool (so the Web app removes it from POOL_CACHE in realtime).
+async function deleteQuestion(qid){
+  if (!cloudOK){ toast("Cloud sync is off — cannot delete", true); return; }
+  // Optimistic local update so UI hides it immediately.
+  STATE[qid] = Object.assign({}, STATE[qid] || {}, { deleted: true, deletedBy: REVIEWER || "anon", deletedAt: { _local: Date.now() } });
+  if (POOL_MAP[qid] && POOL_MAP[qid].__isHostAdded){
+    const i = POOL.findIndex(x => x.__id === qid);
+    if (i >= 0) POOL.splice(i, 1);
+    delete POOL_MAP[qid];
+    const j = HOST_POOL.findIndex(x => x.__id === qid);
+    if (j >= 0) HOST_POOL.splice(j, 1);
+  }
+  rerender();
+  const sid = stableIdOf(qid);
+  try {
+    await setDoc(questionDoc(qid), { deleted: true, deletedBy: REVIEWER || "anon", deletedAt: serverTimestamp() }, { merge: true });
+  } catch(e){ console.warn("quizReviews soft-delete failed:", e.message); throw e; }
+  try {
+    await deleteDoc(doc(fbDb, "quiz_pool", sid));
+  } catch(e){ console.warn("quiz_pool hard-delete failed:", e.message); }
 }
 async function pushQuestionUpdate(qid, patch){
   if (!cloudOK){ toast("Cloud sync is off — can't save", true); return; }
@@ -861,10 +954,18 @@ function escapeHTML(s){
 function letter(i){ return String.fromCharCode(65+i); }
 
 function passesFilters(q){
+  // Soft-deleted questions are hidden everywhere
+  if (getR(q.__id).deleted) return false;
   const sq = search.value.trim().toLowerCase();
   if (sq) {
-    const hay = (effectiveQ(q) + " " + effectiveOpts(q).join(" ") + " " + (q.subtopic||"") + " " + (q.topic||"")).toLowerCase();
-    if (!hay.includes(sq)) return false;
+    // Pure digits: treat as a question-number lookup. "1000" -> q_1000, "5" -> q_0005.
+    if (/^\d+$/.test(sq)) {
+      const padded = "q_" + sq.padStart(4, "0");
+      if (q.__id !== padded) return false;
+    } else {
+      const hay = ((q.__id||"") + " " + (q.__sourceId||"") + " " + effectiveQ(q) + " " + effectiveOpts(q).join(" ") + " " + (q.subtopic||"") + " " + (q.topic||"")).toLowerCase();
+      if (!hay.includes(sq)) return false;
+    }
   }
   if (fTopic.value && (q.topic||"") !== fTopic.value) return false;
   if (fConf.value){
@@ -935,6 +1036,7 @@ function buildCard(q, displayIndex){
       ${reviewed ? `<span class="pill reviewed">reviewed</span>` : `<span class="pill unreviewed">unreviewed</span>`}
       ${changed ? `<span class="pill changed">answer changed</span>` : ""}
       ${edited ? `<span class="pill edited">edited</span>` : ""}
+      ${q.__isHostAdded ? `<span class="pill host" title="Added from Web app mini reviewer">host quiz</span>` : ""}
       ${hasImage(q) ? `<span class="pill has-img">image</span>` : ""}
       ${editorPill}
     </div>`;
@@ -1088,6 +1190,7 @@ function buildCard(q, displayIndex){
       <button data-action="attachimg">${hasImage(q) ? "Replace image" : "Attach image"}</button>
       <button data-action="reviewed">Mark reviewed</button>
       <button data-action="unreview">Unreview</button>
+      <button data-action="delete" class="del" title="Delete this question from the pool (cannot be undone)">Delete</button>
     </div>
     <div class="qmeta"><span class="pill">${q.__id}</span></div>`;
   actions.querySelector('[data-action="agree"]').addEventListener("click", () => {
@@ -1114,6 +1217,15 @@ function buildCard(q, displayIndex){
   actions.querySelector('[data-action="unreview"]').addEventListener("click", () => {
     pushQuestionUpdate(q.__id, { reviewed: false });
   });
+  actions.querySelector('[data-action="delete"]').addEventListener("click", async () => {
+    if (!confirm("Delete " + q.__id + "?\n\nThis hides it from every reviewer and removes it from the Web app pool. The change syncs in real time and cannot be undone from the UI.")) return;
+    try {
+      await deleteQuestion(q.__id);
+      toast("Deleted " + q.__id);
+    } catch(e){
+      toast("Delete failed: " + e.message, true);
+    }
+  });
   card.appendChild(actions);
 
   return card;
@@ -1135,7 +1247,7 @@ function rerender(){
   if (filtered.length === 0){
     const e = document.createElement("div"); e.className = "empty"; e.textContent = "No questions match these filters.";
     root.appendChild(e);
-    updateStats(); updateStorageMeter();
+    updateStats();
     return;
   }
 
@@ -1147,7 +1259,7 @@ function rerender(){
     });
     let n = 0;
     arr.forEach(q => { n++; root.appendChild(buildCard(q, n)); });
-    updateStats(); updateStorageMeter();
+    updateStats();
     return;
   }
 
@@ -1381,6 +1493,7 @@ document.addEventListener("keydown", (e) => {
   updateReviewerPill();
   setCloudStatus(cloudOK ? "loading" : "off", cloudOK ? "connecting..." : "offline (Firebase blocked)");
   if (cloudOK) subscribeToActivePool();
+  if (cloudOK) subscribeToHostQuestions();
 
   // Load pool
   if (tryLoadCachedUploaded()){
