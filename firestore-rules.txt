@@ -1,0 +1,25 @@
+// Firebase Console -> Firestore Database -> Rules tab
+// Paste this and click Publish.
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Reviewer state (per-pool-version, per-question)
+    match /quizReviews/{poolVersion}/questions/{qid} {
+      allow read, write: if true;
+    }
+    match /quizReviews/{poolVersion} {
+      allow read, write: if true;
+    }
+    // (active-pool pointer at quizReviews/_meta is matched by the rule above)
+
+    // Web App reads quiz questions from this top-level collection.
+    // The Reviewer batch-seeds it on every UPLOAD POOL.
+    match /quiz_pool/{qid} {
+      allow read, write: if true;
+    }
+
+    // Keep your existing rules for everything else here.
+  }
+}

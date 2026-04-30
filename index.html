@@ -1,0 +1,1401 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+<title>EM Quiz Pool Reviewer (Realtime)</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#111827; --card:#0b1220; --muted:#94a3b8; --text:#e5e7eb;
+    --accent:#22d3ee; --accent-2:#60a5fa; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444;
+    --border:#1f2937; --hover:#1e293b;
+  }
+  *{box-sizing:border-box}
+  html{scroll-padding-bottom:120px}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  a{color:var(--accent)}
+  header{position:sticky;top:0;z-index:20;background:rgba(15,23,42,0.92);backdrop-filter:saturate(180%) blur(8px);border-bottom:1px solid var(--border)}
+  .wrap{max-width:1100px;margin:0 auto;padding:14px 16px}
+  h1{margin:0;font-size:18px;font-weight:600;letter-spacing:.2px}
+  .sub{color:var(--muted);font-size:12px;margin-top:2px}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:10px}
+  input[type="search"], select{
+    background:#0a0f1c;color:var(--text);border:1px solid var(--border);
+    padding:8px 10px;border-radius:8px;font-size:13px;outline:none;
+  }
+  input[type="search"]{flex:1 1 220px;min-width:160px}
+  select{flex:0 0 auto}
+  button{background:#1e293b;color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:8px;font-size:13px;cursor:pointer}
+  button:hover{background:#243042}
+  button.primary{background:linear-gradient(180deg,#0891b2,#0e7490);border-color:#155e75}
+  button.primary:hover{filter:brightness(1.1)}
+  button.send{background:linear-gradient(180deg,#16a34a,#15803d);border-color:#166534}
+  button.send:hover{filter:brightness(1.1)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .stats{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--muted)}
+  .stats b{color:var(--text)}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;border:1px solid var(--border);font-size:11px;color:var(--muted);background:#0a0f1c}
+  .pill.high{color:#86efac;border-color:#14532d;background:#052e16}
+  .pill.medium{color:#fcd34d;border-color:#78350f;background:#1f1305}
+  .pill.low{color:#fca5a5;border-color:#7f1d1d;background:#180404}
+  .pill.changed{color:#fde68a;border-color:#78350f;background:#251402}
+  .pill.reviewed{color:#86efac;border-color:#14532d;background:#052e16}
+  .pill.unreviewed{color:#94a3b8}
+  .pill.edited{color:#fde68a;border-color:#78350f;background:#251402}
+  .pill.has-img{color:#a5f3fc;border-color:#155e75;background:#062734}
+  .pill.cached{color:#86efac;border-color:#14532d;background:#052e16}
+  .pill.uploaded{color:#a5f3fc;border-color:#155e75;background:#062734}
+  .pill.fetched{color:#cbd5e1}
+  .pill.cloud{color:#86efac;border-color:#14532d;background:#052e16}
+  .pill.schema{color:#fde68a;border-color:#78350f;background:#1f1305}
+  .pill.cloud-on{color:#86efac;border-color:#14532d;background:#052e16}
+  .pill.cloud-off{color:#fca5a5;border-color:#7f1d1d;background:#180404}
+  .pill.cloud-loading{color:#fcd34d;border-color:#78350f;background:#1f1305}
+  .pill.byline{color:#a5f3fc;border-color:#155e75;background:#062734}
+  .pill.you{color:#86efac;border-color:#14532d;background:#052e16}
+  .pill.click{cursor:pointer;text-decoration:underline dotted}
+  main{padding:16px 16px 60vh}
+  .topic-group{margin:18px 0}
+  .topic-head{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px;cursor:pointer}
+  .topic-head h2{margin:0;font-size:15px;font-weight:600;color:var(--accent-2)}
+  .topic-meta{color:var(--muted);font-size:12px}
+  .qcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;transition:border-color .15s ease;scroll-margin-top:140px}
+  .qcard.reviewed{border-color:#14532d}
+  .qcard.changed{border-color:#92400e}
+  .qcard.edited{border-color:#92400e}
+  .qcard.flash{animation:flash .9s ease}
+  @keyframes flash{0%{box-shadow:0 0 0 2px var(--accent)}100%{box-shadow:0 0 0 0 transparent}}
+  .qhead{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}
+  .qmeta{display:flex;gap:6px;flex-wrap:wrap;font-size:11px;color:var(--muted)}
+  .qmeta .num{color:var(--text);font-weight:600}
+  .qstem{font-size:14px;line-height:1.55;margin:6px 0 10px;white-space:pre-wrap}
+  .opts{display:flex;flex-direction:column;gap:6px}
+  label.opt{display:flex;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:#0a0f1c;align-items:flex-start;line-height:1.45}
+  label.opt:hover{background:var(--hover)}
+  label.opt input{margin-top:3px;flex:0 0 auto;accent-color:#22d3ee}
+  label.opt .otext{flex:1}
+  label.opt.ai{border-color:#1e3a8a;background:#0c1530}
+  label.opt.user{border-color:#16a34a;background:#062714}
+  label.opt.both{border-color:#22d3ee;background:#0a2a30}
+  .badges{display:flex;gap:6px;flex-wrap:wrap;margin-left:6px}
+  .badge{font-size:10px;padding:1px 6px;border-radius:999px;border:1px solid;line-height:1.6}
+  .badge.ai{color:#93c5fd;border-color:#1d4ed8;background:#0b1530}
+  .badge.user{color:#86efac;border-color:#14532d;background:#052e16}
+  .actions{display:flex;justify-content:space-between;align-items:center;margin-top:10px;gap:10px;flex-wrap:wrap}
+  .actions .left{display:flex;gap:6px;flex-wrap:wrap}
+  details{margin-top:8px;border-top:1px dashed var(--border);padding-top:8px}
+  details summary{cursor:pointer;color:var(--muted);font-size:12px;list-style:none}
+  details summary::-webkit-details-marker{display:none}
+  details summary::before{content:"\25B8 ";color:var(--accent)}
+  details[open] summary::before{content:"\25BE "}
+  .exp{margin-top:6px;color:#cbd5e1;font-size:13px;line-height:1.55;background:#0a0f1c;padding:8px 10px;border-radius:8px;border:1px solid var(--border)}
+  textarea.note{width:100%;background:#0a0f1c;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;font:inherit;min-height:60px;resize:vertical;margin-top:6px}
+  .editbox{background:#0a0f1c;border:1px solid var(--border);border-radius:10px;padding:10px;margin-top:6px}
+  .editbox label{display:block;color:var(--muted);font-size:11px;margin:6px 0 4px;text-transform:uppercase;letter-spacing:.5px}
+  .editbox textarea, .editbox input[type="text"]{
+    width:100%;background:#070b14;color:var(--text);border:1px solid var(--border);
+    border-radius:8px;padding:8px 10px;font:inherit;
+  }
+  .editbox textarea{resize:vertical;min-height:80px}
+  .opt-edit{display:flex;gap:6px;margin-bottom:6px;align-items:center}
+  .opt-edit .lbl{flex:0 0 auto;font-weight:600;color:var(--accent-2);width:18px;text-align:center}
+  .opt-edit input{flex:1}
+  .opt-edit button{flex:0 0 auto;padding:6px 8px;font-size:12px}
+  .editbox .ctrls{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;position:sticky;bottom:90px;background:linear-gradient(to top, var(--card) 60%, transparent);padding:10px 0 8px;z-index:5;border-top:1px solid var(--border)}
+  .qimg-wrap{margin:8px 0;position:relative;display:inline-block;max-width:100%}
+  .qimg-wrap img{max-width:100%;max-height:380px;border-radius:10px;border:1px solid var(--border);display:block;background:#000;cursor:zoom-in}
+  .qimg-wrap .imgtools{position:absolute;top:6px;right:6px;display:flex;gap:4px}
+  .qimg-wrap .imgtools button{padding:4px 8px;font-size:11px;background:rgba(15,23,42,.85);backdrop-filter:blur(6px)}
+  .imgmeta{font-size:11px;color:var(--muted);margin-top:4px}
+  .file-input{display:none}
+  .toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#1f2937;color:#fff;padding:10px 16px;border-radius:10px;border:1px solid var(--border);box-shadow:0 8px 24px rgba(0,0,0,.5);z-index:50;font-size:13px;max-width:90vw;text-align:center}
+  .toast.err{background:#7f1d1d;border-color:#dc2626}
+  .lightbox{position:fixed;inset:0;background:rgba(0,0,0,.92);display:none;align-items:center;justify-content:center;z-index:60;cursor:zoom-out}
+  .lightbox img{max-width:96vw;max-height:96vh}
+  .lightbox.show{display:flex}
+  footer.bar{position:fixed;left:0;right:0;bottom:0;background:rgba(15,23,42,0.96);backdrop-filter:saturate(180%) blur(8px);border-top:1px solid var(--border);z-index:30}
+  footer .wrap{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;padding:10px 16px}
+  .progressbar{flex:0 0 8px;height:8px;width:100%;background:#0a0f1c;border:1px solid var(--border);border-radius:999px;overflow:hidden}
+  .progressbar > div{height:100%;background:linear-gradient(90deg,#06b6d4,#22c55e);width:0%}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  kbd{font:11px ui-monospace,Menlo,Consolas,monospace;background:#0a0f1c;border:1px solid var(--border);border-bottom-width:2px;padding:1px 5px;border-radius:4px}
+  .splash{min-height:60vh;display:flex;align-items:center;justify-content:center;padding:40px 16px}
+  .splash .card{max-width:560px;width:100%;background:var(--card);border:1px dashed var(--border);border-radius:14px;padding:32px 24px;text-align:center}
+  .splash.dragover .card{border-color:var(--accent);background:#0a2a30}
+  .splash h2{margin:0 0 8px;font-size:20px}
+  .splash p{margin:6px 0;color:var(--muted)}
+  .splash .big-btn{margin-top:16px;padding:12px 22px;font-size:14px}
+  .splash .hint{margin-top:14px;font-size:12px;color:var(--muted)}
+  .splash code{background:#0a0f1c;border:1px solid var(--border);border-radius:6px;padding:1px 6px;font-size:12px}
+  /* Display-name modal */
+  .modal{position:fixed;inset:0;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;z-index:80;backdrop-filter:blur(4px)}
+  .modal-card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:24px 28px;width:min(420px, 92vw)}
+  .modal-card h3{margin:0 0 6px;font-size:18px}
+  .modal-card p{margin:0 0 14px;color:var(--muted);font-size:13px}
+  .modal-card input{width:100%;background:#0a0f1c;color:var(--text);border:1px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;outline:none}
+  .modal-card input:focus{border-color:var(--accent)}
+  .modal-card .row{display:flex;gap:8px;justify-content:flex-end;margin-top:14px}
+  .modal-card .err{color:#fca5a5;font-size:12px;margin-top:8px;display:none;min-height:1em}
+  .modal-card.shake{animation:shake .35s}
+  @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
+  @media (max-width:600px){
+    .qhead{flex-direction:column;align-items:stretch}
+    .actions{flex-direction:column;align-items:stretch}
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <div>
+        <h1>EM Quiz Pool Reviewer
+          <span class="pill" id="poolVersionPill">no pool</span>
+          <span class="pill" id="poolSourcePill" title="Where the current pool was loaded from">empty</span>
+          <span class="pill schema" id="poolSchemaPill" style="display:none" title="Detected JSON schema">schema?</span>
+          <span class="pill cloud-loading" id="cloudPill" title="Cloud sync status">cloud: connecting...</span>
+          <span class="pill click" id="reviewerPill" title="Click to change your display name">you: ?</span>
+        </h1>
+        <div class="sub">Edits sync live to Firebase. All reviewers see each other's changes in real time.</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input id="poolFile" type="file" accept="application/json,.json" class="file-input">
+        <button id="btnUpload" title="Load a QuizPool JSON file">UPLOAD POOL</button>
+        <button id="btnReset" title="Clear your local cache only (cloud state stays)">Local reset</button>
+        <button id="btnExport" title="Download the latest CLOUD state as JSON">Export</button>
+        <button id="btnSendOwner" class="send" title="Download the cloud state and open email">SEND TO OWNER</button>
+      </div>
+    </div>
+    <div class="toolbar">
+      <input id="search" type="search" placeholder="Search question text, options, subtopic...">
+      <select id="fTopic"><option value="">All topics</option></select>
+      <select id="fConf">
+        <option value="">All confidence</option>
+        <option value="low">Low only</option>
+        <option value="medium">Medium only</option>
+        <option value="medium,low">Medium + Low (priority)</option>
+        <option value="high">High only</option>
+      </select>
+      <select id="fStatus">
+        <option value="">All review status</option>
+        <option value="unreviewed">Not yet reviewed</option>
+        <option value="reviewed">Reviewed</option>
+        <option value="changed">Answer changed</option>
+        <option value="agreed">Agreed (you confirmed AI)</option>
+        <option value="edited">Edited text/options</option>
+        <option value="image">Has image</option>
+      </select>
+      <select id="fSort" title="How to sort questions">
+        <option value="">Group by topic (default)</option>
+        <option value="id-asc">By question # (q_0001 -> q_xxxx)</option>
+        <option value="id-desc">By question # (q_xxxx -> q_0001)</option>
+      </select>
+      <button id="btnExpand" title="Expand/collapse all topics">Toggle topics</button>
+    </div>
+    <div class="stats" id="stats"></div>
+  </div>
+  <div class="lightbox" id="lightbox" onclick="this.classList.remove('show')"><img id="lbImg" alt=""></div>
+</header>
+
+<main class="wrap" id="root"></main>
+
+<footer class="bar">
+  <div class="wrap">
+    <div style="display:flex;flex-direction:column;gap:4px;flex:1 1 240px;min-width:200px">
+      <div style="display:flex;gap:14px;font-size:12px;color:var(--muted);flex-wrap:wrap">
+        <span><b id="reviewedCount" style="color:var(--text)">0</b>/<span id="totalCount">0</span> reviewed</span>
+        <span><b id="changedCount" style="color:var(--text)">0</b> changed</span>
+        <span><b id="editedCount" style="color:var(--text)">0</b> edited</span>
+        <span><b id="imageCount" style="color:var(--text)">0</b> images</span>
+      </div>
+      <div class="progressbar"><div id="progressBar"></div></div>
+    </div>
+    <div style="font-size:11px;color:var(--muted)">
+      <kbd>1</kbd>-<kbd>9</kbd> &middot; <kbd>r</kbd> reviewed &middot; <kbd>n</kbd> next
+    </div>
+    <button id="btnExport2">Export</button>
+    <button id="btnSendOwner2" class="send">SEND TO OWNER</button>
+  </div>
+</footer>
+
+<script type="module">
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js';
+import { getFirestore, doc, setDoc, deleteDoc, collection, onSnapshot, serverTimestamp, deleteField, writeBatch }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js';
+import { getStorage, ref as storageRef, uploadString, getDownloadURL, deleteObject }
+  from 'https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js';
+
+// ---- Firebase config (reused from EM Web app) ----
+const firebaseConfig = {
+  apiKey: "AIzaSyCByZ1gm2oStuqi_9BXuA26QOWnKRmbD34",
+  authDomain: "eprj-textsummarizer.firebaseapp.com",
+  projectId: "eprj-textsummarizer",
+  storageBucket: "eprj-textsummarizer.firebasestorage.app",
+  messagingSenderId: "39520423716",
+  appId: "1:39520423716:web:495266620ba680436cadb1"
+};
+
+let fbApp, fbDb, fbStorage;
+let cloudOK = false;
+try {
+  fbApp     = initializeApp(firebaseConfig);
+  fbDb      = getFirestore(fbApp);
+  fbStorage = getStorage(fbApp);
+  cloudOK = true;
+} catch(e){
+  console.warn("Firebase init failed", e);
+}
+
+const UPLOADED_POOL_KEY = "emQuizUploadedPool";
+  const REVIEWER_UNLOCK_KEY = "emQuizUnlocked";
+  // SHA-256 of the access password. To rotate:
+  //   1) compute SHA-256 of new password
+  //   2) replace this constant
+  //   3) re-deploy.
+  // Default password is "em-review-2026". Soft client-side gate only.
+  const PASSWORD_HASH = "2eb8b9136faa9116f03406f22deb9400d94f2cccae22e2646786b2cfdf13ec52";
+  async function sha256Hex(s){
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(s));
+    return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
+  function isUnlocked(){
+    try { return localStorage.getItem(REVIEWER_UNLOCK_KEY) === PASSWORD_HASH; }
+    catch(e){ return false; }
+  }
+  function checkPasswordGate(){
+    return new Promise(resolve => {
+      if (isUnlocked()){ resolve(true); return; }
+      const m = document.createElement("div");
+      m.className = "modal";
+      m.innerHTML = `
+        <div class="modal-card" id="gateCard">
+          <h3>Access required</h3>
+          <p>This Reviewer is private. Enter the access password to continue.</p>
+          <input id="gatePwd" type="password" autocomplete="current-password" placeholder="Password">
+          <div class="err" id="gateErr"></div>
+          <div class="row">
+            <button id="gateOk" class="primary">Unlock</button>
+          </div>
+        </div>`;
+      document.body.appendChild(m);
+      const inp = m.querySelector("#gatePwd");
+      const err = m.querySelector("#gateErr");
+      const card = m.querySelector("#gateCard");
+      inp.focus();
+      async function tryUnlock(){
+        const v = inp.value.trim();
+        if (!v){ inp.focus(); return; }
+        let h;
+        try { h = await sha256Hex(v); }
+        catch(e){ err.style.display = "block"; err.textContent = "crypto unavailable in this browser"; return; }
+        if (h === PASSWORD_HASH){
+          try { localStorage.setItem(REVIEWER_UNLOCK_KEY, PASSWORD_HASH); } catch(e){}
+          m.remove();
+          resolve(true);
+        } else {
+          err.style.display = "block"; err.textContent = "Wrong password.";
+          card.classList.remove("shake"); void card.offsetWidth; card.classList.add("shake");
+          inp.select();
+        }
+      }
+      m.querySelector("#gateOk").addEventListener("click", tryUnlock);
+      inp.addEventListener("keydown", e => { if (e.key === "Enter") tryUnlock(); });
+    });
+  }
+const REVIEWER_NAME_KEY = "emQuizReviewerName";
+const OWNER_EMAIL = "mosworawat@gmail.com";
+const OWNER_NAME  = "Sasiphon";
+
+let POOL = [];
+let POOL_VERSION = "?";
+let POOL_SOURCE = "empty";
+let POOL_SCHEMA = "v1";
+let STATE = {};        // local cache of cloud state, keyed by question.__id
+let POOL_MAP = {};     // keyed by question.__id → normalized question object
+let UNSUB = null;      // Firestore unsubscribe fn for the current pool
+let REVIEWER = "";
+
+// ---------- Schema normalization (unchanged from prev) ----------
+const AUTO_FETCH_CANDIDATES = [
+  "./pool.json",
+  "./QuizPools_All_2.0.json",
+  "./CompleteQuizPools_Ver.2.0.json",
+  "./CompleteQuizPools_Ver.1.4.json",
+  "./CompleteQuizPools_Ver.1.3.json",
+  "../Full quiz pool/QuizPools_All_2.0.json",
+  "../Ready to Upload/CompleteQuizPools_Ver.1.3.json"
+];
+function detectSchema(q){
+  if (!q || typeof q !== "object") return null;
+  if (typeof q.q === "string" && Array.isArray(q.opts)) return "v1";
+  if (typeof q.question === "string" && Array.isArray(q.options)) return "v2";
+  return null;
+}
+function normalizeQuestion(q, schema){
+  if (schema === "v1") return Object.assign({}, q);
+  if (schema === "v2"){
+    const out = {
+      q: q.question, opts: q.options, ans: q.correct, exp: q.explanation,
+      topic: q.topic, subtopic: q.subtopic, difficulty: q.difficulty,
+      confidence: q.confidence, source: q.source, year: q.year, page: q.page,
+      hasAnswer: q.hasAnswer
+    };
+    if (q.id)        out.__sourceId = q.id;
+    if (q.updatedAt) out.__sourceUpdatedAt = q.updatedAt;
+    return out;
+  }
+  return Object.assign({}, q);
+}
+function denormalizeQuestion(q, schema){
+  if (schema === "v2"){
+    const out = {
+      question: q.q, options: q.opts, correct: q.ans, explanation: q.exp || "",
+      topic: q.topic, subtopic: q.subtopic, difficulty: q.difficulty,
+      confidence: q.confidence, source: q.source, year: q.year, page: q.page,
+      hasAnswer: q.hasAnswer
+    };
+    if (q.__sourceId)        out.id        = q.__sourceId;
+    if (q.__sourceUpdatedAt) out.updatedAt = q.__sourceUpdatedAt;
+    return out;
+  }
+  return {
+    q: q.q, opts: q.opts, ans: q.ans, exp: q.exp || "",
+    topic: q.topic, subtopic: q.subtopic, difficulty: q.difficulty,
+    confidence: q.confidence, source: q.source, year: q.year, page: q.page,
+    hasAnswer: q.hasAnswer
+  };
+}
+function normalizePool(arr){
+  if (!Array.isArray(arr)) return { error: "Top-level JSON must be an array" };
+  if (arr.length === 0)   return { error: "Pool is empty" };
+  const schema = detectSchema(arr[0]);
+  if (!schema) return { error: "Unrecognized question shape" };
+  for (let i = 0; i < Math.min(arr.length, 5); i++){
+    const s = detectSchema(arr[i]);
+    if (s !== schema) return { error: `Question ${i} schema mismatch` };
+    const stem = (schema === "v1") ? arr[i].q : arr[i].question;
+    const opts = (schema === "v1") ? arr[i].opts : arr[i].options;
+    const ans  = (schema === "v1") ? arr[i].ans : arr[i].correct;
+    if (typeof stem !== "string")               return { error: `Question ${i} missing question text` };
+    if (!Array.isArray(opts) || opts.length<2)  return { error: `Question ${i} needs at least 2 options` };
+    if (typeof ans !== "number")                return { error: `Question ${i} missing correct-answer index` };
+  }
+  return { schema, pool: arr.map(q => normalizeQuestion(q, schema)) };
+}
+
+// ---------- Toast ----------
+let toastTimer;
+function toast(msg, isError){
+  const old = document.querySelector(".toast"); if (old) old.remove();
+  const el = document.createElement("div");
+  el.className = "toast" + (isError ? " err" : "");
+  el.textContent = msg;
+  document.body.appendChild(el);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.remove(), 4500);
+}
+
+// ---------- Reviewer name ----------
+function loadReviewerName(){
+  try { return localStorage.getItem(REVIEWER_NAME_KEY) || ""; }
+  catch(e){ return ""; }
+}
+function saveReviewerName(n){
+  try { localStorage.setItem(REVIEWER_NAME_KEY, n); } catch(e){}
+}
+function askReviewerName(initial){
+  return new Promise(resolve => {
+    const m = document.createElement("div");
+    m.className = "modal";
+    m.innerHTML = `
+      <div class="modal-card">
+        <h3>What's your review name?</h3>
+        <p>This shows up next to questions you edit so others know who made the change. Just a display name — no email or password needed.</p>
+        <input id="nm" type="text" maxlength="40" autocomplete="off" placeholder="e.g. Dr.A, Sai, P'mosw">
+        <div class="row">
+          <button id="nmCancel" style="display:${initial?'none':'inline-block'}">Cancel</button>
+          <button id="nmOk" class="primary">Save</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    const inp = m.querySelector("#nm"); inp.value = initial || ""; inp.focus();
+    m.querySelector("#nmOk").addEventListener("click", () => {
+      const v = inp.value.trim();
+      if (v.length < 1){ toast("Please enter a name", true); inp.focus(); return; }
+      saveReviewerName(v);
+      m.remove();
+      resolve(v);
+    });
+    m.querySelector("#nmCancel").addEventListener("click", () => { m.remove(); resolve(initial); });
+    inp.addEventListener("keydown", e => { if (e.key === "Enter") m.querySelector("#nmOk").click(); });
+  });
+}
+function updateReviewerPill(){
+  const p = document.getElementById("reviewerPill");
+  p.textContent = "you: " + (REVIEWER || "?");
+}
+
+// ---------- Cloud status pill ----------
+function setCloudStatus(state, label){
+  const p = document.getElementById("cloudPill");
+  p.className = "pill cloud-" + state;
+  p.textContent = "cloud: " + label;
+}
+
+// ---------- Active pool ----------
+function attachIds(pool){
+  pool.forEach((q, i) => q.__id = "q_" + String(i+1).padStart(4, "0"));
+}
+function setActivePool(arr, version, source, schema){
+  if (UNSUB){ UNSUB(); UNSUB = null; }
+  POOL = arr;
+  POOL_VERSION = version || "?";
+  POOL_SOURCE = source || "uploaded";
+  POOL_SCHEMA = schema || "v1";
+  attachIds(POOL);
+  POOL_MAP = Object.fromEntries(POOL.map(q => [q.__id, q]));
+  STATE = {};
+  document.getElementById("poolVersionPill").textContent = "v" + POOL_VERSION;
+  const sPill = document.getElementById("poolSourcePill");
+  sPill.textContent = source; sPill.className = "pill " + source;
+  const schPill = document.getElementById("poolSchemaPill");
+  schPill.style.display = "";
+  schPill.textContent = "schema " + POOL_SCHEMA;
+  populateTopicFilter();
+
+  if (cloudOK){
+    subscribeToCloud();
+  } else {
+    setCloudStatus("off", "offline (local only)");
+  }
+}
+function clearActivePool(){
+  if (UNSUB){ UNSUB(); UNSUB = null; }
+  POOL = []; POOL_MAP = {}; POOL_VERSION = "?"; POOL_SOURCE = "empty"; POOL_SCHEMA = "v1";
+  STATE = {};
+  document.getElementById("poolVersionPill").textContent = "no pool";
+  const sPill = document.getElementById("poolSourcePill");
+  sPill.textContent = "empty"; sPill.className = "pill";
+  document.getElementById("poolSchemaPill").style.display = "none";
+  setCloudStatus("loading", "no pool");
+  populateTopicFilter();
+}
+
+// ---------- Firestore sync ----------
+function questionsCollection(){
+  // Path: quizReviews/v2.0/questions/q_0001
+  return collection(fbDb, "quizReviews", "v" + POOL_VERSION, "questions");
+}
+function questionDoc(qid){
+  return doc(fbDb, "quizReviews", "v" + POOL_VERSION, "questions", qid);
+}
+let META_UNSUB = null;
+function subscribeToActivePool(){
+  if (!cloudOK) return;
+  if (META_UNSUB){ META_UNSUB(); META_UNSUB = null; }
+  META_UNSUB = onSnapshot(doc(fbDb, "quizReviews", "_meta"), async snap => {
+    if (!snap.exists()) return;
+    const data = snap.data();
+    const meta = data && data.activePool;
+    if (!meta || !meta.downloadUrl) return;
+    if (POOL_VERSION === meta.version && POOL.length > 0 && POOL_SOURCE !== "empty") return;
+    try {
+      const res = await fetch(meta.downloadUrl, {cache: "no-cache"});
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const arr = await res.json();
+      const r = normalizePool(arr);
+      if (r.error) throw new Error(r.error);
+      try {
+        localStorage.setItem(UPLOADED_POOL_KEY, JSON.stringify({
+          version: meta.version, schema: r.schema, filename: meta.filename || "cloud", savedAt: Date.now(), pool: r.pool
+        }));
+      } catch(e){}
+      setActivePool(r.pool, meta.version, "cloud", r.schema);
+      rerender();
+      toast(`Loaded v${meta.version} from cloud (uploaded by ${meta.uploadedBy || "?"})`);
+    } catch(e){
+      console.error("Pool cloud fetch failed", e);
+      toast("Cloud pool fetch failed: " + e.message, true);
+    }
+  }, err => {
+    console.error("_meta listener error", err);
+  });
+}
+function subscribeToCloud(){
+  setCloudStatus("loading", "connecting...");
+  try {
+    const col = questionsCollection();
+    UNSUB = onSnapshot(col, snap => {
+      let updates = 0;
+      snap.docChanges().forEach(ch => {
+        const qid = ch.doc.id;
+        if (ch.type === "removed"){
+          delete STATE[qid];
+        } else {
+          STATE[qid] = ch.doc.data();
+        }
+        updates++;
+      });
+      if (updates > 0) rerender();
+      setCloudStatus("on", `synced (${snap.size} edits)`);
+    }, err => {
+      console.error("Firestore listener error", err);
+      setCloudStatus("off", "error: " + (err.code || err.message || "unknown"));
+      toast("Cloud sync failed: " + (err.message || err.code), true);
+    });
+  } catch(e){
+    setCloudStatus("off", "init failed");
+    console.error(e);
+  }
+}
+// ---------- quiz_pool sync helpers ----------
+function stableIdOf(qid){
+  const orig = POOL_MAP[qid];
+  return (orig && orig.__sourceId) ? orig.__sourceId : qid;
+}
+// NOTE: `orig` (from POOL_MAP) must be a normalizePool()-processed object (v1 shape: .q, .opts, .ans).
+// The orig.correct fallback handles edge-cases where a raw v2 object bypasses normalization.
+function buildQPDoc(qid, mergedState){
+  const orig = POOL_MAP[qid] || {};
+  const effectiveAns = (typeof mergedState.userAns === 'number') ? mergedState.userAns
+                     : (typeof orig.ans === 'number')            ? orig.ans
+                     : (typeof orig.correct === 'number')        ? orig.correct : null;
+  const effectiveQ   = (typeof mergedState.userQ === 'string' && mergedState.userQ)
+                       ? mergedState.userQ : (orig.q || '');
+  const effectiveOpt = (Array.isArray(mergedState.userOpts) && mergedState.userOpts.length)
+                       ? mergedState.userOpts : (orig.opts || []);
+  return {
+    id:          orig.__sourceId || qid,
+    question:    effectiveQ,
+    options:     effectiveOpt,
+    correct:     effectiveAns,
+    explanation: mergedState.explanation || orig.exp || '',
+    topic:       orig.topic      || 'General EM',
+    subtopic:    orig.subtopic   || '',
+    difficulty:  orig.difficulty || 'medium',
+    source:      orig.source     || '',
+    year:        String(orig.year || ''),
+    hasAnswer:   typeof effectiveAns === 'number',
+    imageUrl:    mergedState.imageUrl || null,
+    imageW:      mergedState.imageW   || null,
+    imageH:      mergedState.imageH   || null,
+    updatedAt:   serverTimestamp()
+  };
+}
+async function pushQuestionUpdate(qid, patch){
+  if (!cloudOK){ toast("Cloud sync is off — can't save", true); return; }
+  const merged = Object.assign({}, STATE[qid] || {}, patch, {
+    editedBy: REVIEWER || "anon",
+    editedAt: serverTimestamp()
+  });
+  // Merge into local STATE immediately for snappy UI; the listener will reconcile
+  STATE[qid] = Object.assign({}, STATE[qid] || {}, patch);
+  STATE[qid].editedBy = merged.editedBy;
+  STATE[qid].editedAt = { _local: Date.now() };
+  rerender();
+  try {
+    await setDoc(questionDoc(qid), merged, { merge: true });
+    // Dual-write: keep quiz_pool in sync so Web App gets live updates
+    if (POOL_MAP[qid]) {
+      const sid = stableIdOf(qid);
+      const qpDoc = buildQPDoc(qid, merged);
+      // Fire-and-forget: if this write fails, quiz_pool diverges from quizReviews.
+      // The batch-seed on next pool upload is the reconciliation safety net.
+      setDoc(doc(fbDb, 'quiz_pool', sid), qpDoc)
+        .catch(e => console.warn('quiz_pool sync failed (will reconcile on next upload):', e.message));
+    }
+  } catch(e){
+    console.error("Firestore write failed", e);
+    toast("Save failed: " + e.message, true);
+  }
+}
+async function clearQuestionField(qid, field){
+  if (!cloudOK) return;
+  const patch = {};
+  patch[field] = deleteField();
+  patch.editedBy = REVIEWER || "anon";
+  patch.editedAt = serverTimestamp();
+  if (STATE[qid]) delete STATE[qid][field];
+  rerender();
+  try { await setDoc(questionDoc(qid), patch, { merge: true }); }
+  catch(e){ console.error(e); toast("Save failed: " + e.message, true); }
+}
+
+// ---------- State accessors ----------
+function getR(id){ return STATE[id] || {}; }
+function isReviewed(q){ return !!getR(q.__id).reviewed; }
+function userAnsOf(q){ const r = getR(q.__id); return (typeof r.userAns === "number") ? r.userAns : null; }
+function isChanged(q){ const ua = userAnsOf(q); return ua !== null && ua !== q.ans; }
+function isAgreed(q){ const ua = userAnsOf(q); return ua !== null && ua === q.ans; }
+function isEdited(q){ const r = getR(q.__id); return (typeof r.userQ === "string") || Array.isArray(r.userOpts); }
+function hasImage(q){ const r = getR(q.__id); return !!(r.imageUrl); }
+function effectiveQ(q){ const r = getR(q.__id); return (typeof r.userQ === "string" && r.userQ.length > 0) ? r.userQ : q.q; }
+function effectiveOpts(q){ const r = getR(q.__id); return (Array.isArray(r.userOpts) && r.userOpts.length > 0) ? r.userOpts : (q.opts || []); }
+function lastEditorOf(q){
+  const r = getR(q.__id);
+  if (!r.editedBy && !r.editedAt) return null;
+  return { by: r.editedBy || "?", at: r.editedAt };
+}
+function fmtTimeAgo(ts){
+  let ms;
+  if (!ts) return "";
+  if (ts._local) ms = ts._local;
+  else if (typeof ts.toMillis === "function") ms = ts.toMillis();
+  else if (ts.seconds) ms = ts.seconds * 1000;
+  else return "";
+  const d = (Date.now() - ms) / 1000;
+  if (d < 5) return "just now";
+  if (d < 60) return Math.floor(d) + "s ago";
+  if (d < 3600) return Math.floor(d/60) + "m ago";
+  if (d < 86400) return Math.floor(d/3600) + "h ago";
+  return Math.floor(d/86400) + "d ago";
+}
+
+// ---------- Pool upload / fetch ----------
+function detectVersion(filename){
+  if (!filename) return null;
+  const m = filename.match(/(?:Ver\.?|v)?(\d+\.\d+)/i);
+  return m ? m[1] : null;
+}
+function loadFromFile(file){
+  if (!file) return;
+  if (!/\.json$/i.test(file.name) && file.type !== "application/json") {
+    toast("Please choose a .json file", true); return;
+  }
+  const reader = new FileReader();
+  reader.onerror = () => toast("Could not read file", true);
+  reader.onload = async () => {
+    const text = reader.result;
+    let arr;
+    try { arr = JSON.parse(text); }
+    catch(e){ toast("Invalid JSON: " + e.message, true); return; }
+    const r = normalizePool(arr);
+    if (r.error){ toast("Invalid pool: " + r.error, true); return; }
+    const version = detectVersion(file.name) || "uploaded";
+    try {
+      localStorage.setItem(UPLOADED_POOL_KEY, JSON.stringify({
+        version, schema: r.schema, filename: file.name, savedAt: Date.now(), pool: r.pool
+      }));
+    } catch(e){
+      toast("Loaded into memory only (cache full)", true);
+    }
+    // Capture reviewed state from current pool before STATE is cleared by setActivePool
+    const preUploadMap = {};
+    POOL.forEach(q => {
+      const sid = stableIdOf(q.__id);
+      if (STATE[q.__id] && Object.keys(STATE[q.__id]).length > 0) {
+        preUploadMap[sid] = Object.assign({}, STATE[q.__id]);
+      }
+    });
+    setActivePool(r.pool, version, "uploaded", r.schema);
+    rerender();
+    toast(`Loaded ${r.pool.length} questions (v${version}, schema ${r.schema})`);
+
+    // Push the pool itself to Firebase so other reviewers auto-switch to it.
+    if (cloudOK){
+      try {
+        const path = `quizReviews/_pools/v${version}.json`;
+        const ref = storageRef(fbStorage, path);
+        await uploadString(ref, text, "raw", {contentType: "application/json"});
+        const url = await getDownloadURL(ref);
+        await setDoc(doc(fbDb, "quizReviews", "_meta"), {
+          activePool: {
+            version, schema: r.schema, filename: file.name,
+            storagePath: path, downloadUrl: url,
+            questionCount: r.pool.length,
+            uploadedBy: REVIEWER || "anon",
+            uploadedAt: serverTimestamp()
+          }
+        }, {merge: true});
+        // Batch-seed quiz_pool so Web App gets all questions immediately
+        // NOTE: __sourceId must be stable across pool versions for state carry-over to work.
+        // If a question lacks __sourceId, carry-over falls back to positional __id matching.
+        try {
+          const BATCH_SIZE = 500; // Firestore hard limit per batch
+          const poolToSeed = POOL; // POOL is now the newly loaded pool
+          if (poolToSeed.length === 0) {
+            toast(`Cloud-synced v${version} - other reviewers will switch shortly`);
+          } else {
+            let carryOverCount = 0;
+            for (let i = 0; i < poolToSeed.length; i += BATCH_SIZE) {
+              const batch = writeBatch(fbDb);
+              poolToSeed.slice(i, i + BATCH_SIZE).forEach(q => {
+                const sid = stableIdOf(q.__id);
+                const prevState = preUploadMap[sid] || {};
+                if (Object.keys(prevState).length > 0) carryOverCount++;
+                const qpDoc = buildQPDoc(q.__id, prevState);
+                batch.set(doc(fbDb, 'quiz_pool', sid), qpDoc);
+              });
+              await batch.commit();
+            }
+            console.log(`quiz_pool seed: ${carryOverCount}/${poolToSeed.length} questions had prior reviewed state`);
+            toast(`Cloud-synced v${version} — ${poolToSeed.length} questions live in quiz_pool`);
+          }
+        } catch(seedErr){
+          console.warn('quiz_pool batch seed failed:', seedErr.message);
+          toast(`Cloud-synced v${version} but quiz_pool seed failed: ` + seedErr.message, true);
+        }
+      } catch(e){
+        console.error(e);
+        toast("Cloud upload failed: " + e.message, true);
+      }
+    }
+  };
+  reader.readAsText(file);
+}
+function tryLoadCachedUploaded(){
+  try {
+    const raw = localStorage.getItem(UPLOADED_POOL_KEY);
+    if (!raw) return false;
+    const obj = JSON.parse(raw);
+    if (!obj || !Array.isArray(obj.pool)) return false;
+    const r = normalizePool(obj.pool);
+    if (r.error){ localStorage.removeItem(UPLOADED_POOL_KEY); return false; }
+    setActivePool(r.pool, obj.version || "uploaded", "cached", r.schema);
+    return true;
+  } catch(e){ return false; }
+}
+async function tryAutoFetch(){
+  for (const path of AUTO_FETCH_CANDIDATES){
+    try {
+      const res = await fetch(path, {cache: "no-cache"});
+      if (!res.ok) continue;
+      const arr = await res.json();
+      const r = normalizePool(arr);
+      if (r.error) continue;
+      const version = detectVersion(path.split("/").pop()) || "1.0";
+      setActivePool(r.pool, version, "fetched", r.schema);
+      return true;
+    } catch(e){}
+  }
+  return false;
+}
+
+// ---------- Image: resize then upload to Firebase Storage ----------
+const MAX_W = 1280, MAX_H = 1280, JPEG_Q = 0.78;
+function fileToResizedDataURL(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        let w = img.naturalWidth, h = img.naturalHeight;
+        const scale = Math.min(1, MAX_W / w, MAX_H / h);
+        w = Math.round(w * scale); h = Math.round(h * scale);
+        const c = document.createElement("canvas");
+        c.width = w; c.height = h;
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#000"; ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        const url = c.toDataURL("image/jpeg", JPEG_Q);
+        resolve({dataUrl: url, w, h, originalSize: file.size});
+      };
+      img.onerror = () => reject(new Error("Could not decode image"));
+      img.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error("Could not read file"));
+    reader.readAsDataURL(file);
+  });
+}
+async function attachImage(qid, file){
+  if (!file) return;
+  if (!cloudOK){ toast("Cloud sync needed for image upload", true); return; }
+  if (file.size > 20 * 1024 * 1024) { toast("Image too large (max 20MB)", true); return; }
+  toast(`Uploading image for ${qid}...`);
+  try {
+    const meta = await fileToResizedDataURL(file);
+    const path = "quizReviews/v" + POOL_VERSION + "/" + qid + ".jpg";
+    const r = storageRef(fbStorage, path);
+    await uploadString(r, meta.dataUrl, "data_url");
+    const downloadUrl = await getDownloadURL(r);
+    await pushQuestionUpdate(qid, {
+      imageUrl: downloadUrl,
+      imageStoragePath: path,
+      imageW: meta.w, imageH: meta.h
+    });
+    toast(`Image uploaded (${meta.w}x${meta.h})`);
+  } catch(e){
+    console.error(e); toast("Image upload failed: " + e.message, true);
+  }
+}
+async function removeImage(qid){
+  const r = STATE[qid] || {};
+  const path = r.imageStoragePath;
+  if (path){
+    try { await deleteObject(storageRef(fbStorage, path)); } catch(e){ console.warn(e); }
+  }
+  // Clear fields in Firestore
+  await pushQuestionUpdate(qid, {
+    imageUrl: null, imageStoragePath: null, imageW: null, imageH: null
+  });
+}
+function openLightbox(src){
+  const lb = document.getElementById("lightbox");
+  document.getElementById("lbImg").src = src;
+  lb.classList.add("show");
+}
+
+// ---------- Topic filter ----------
+function populateTopicFilter(){
+  const sel = document.getElementById("fTopic");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All topics</option>';
+  const topics = Array.from(new Set(POOL.map(q => q.topic||"(none)"))).sort();
+  topics.forEach(t => {
+    const o = document.createElement("option"); o.value=t; o.textContent=t; sel.appendChild(o);
+  });
+  if (topics.indexOf(cur) >= 0) sel.value = cur;
+}
+
+// ---------- Render ----------
+const root = document.getElementById("root");
+const search = document.getElementById("search");
+const fTopic = document.getElementById("fTopic");
+const fConf = document.getElementById("fConf");
+const fStatus = document.getElementById("fStatus");
+
+function escapeHTML(s){
+  return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+function letter(i){ return String.fromCharCode(65+i); }
+
+function passesFilters(q){
+  const sq = search.value.trim().toLowerCase();
+  if (sq) {
+    const hay = (effectiveQ(q) + " " + effectiveOpts(q).join(" ") + " " + (q.subtopic||"") + " " + (q.topic||"")).toLowerCase();
+    if (!hay.includes(sq)) return false;
+  }
+  if (fTopic.value && (q.topic||"") !== fTopic.value) return false;
+  if (fConf.value){
+    const wanted = fConf.value.split(",");
+    if (!wanted.includes(q.confidence)) return false;
+  }
+  if (fStatus.value){
+    const reviewed = isReviewed(q);
+    if (fStatus.value === "unreviewed" && reviewed) return false;
+    if (fStatus.value === "reviewed" && !reviewed) return false;
+    if (fStatus.value === "changed" && !isChanged(q)) return false;
+    if (fStatus.value === "agreed" && !isAgreed(q)) return false;
+    if (fStatus.value === "edited" && !isEdited(q)) return false;
+    if (fStatus.value === "image" && !hasImage(q)) return false;
+  }
+  return true;
+}
+
+function renderSplash(){
+  const el = document.createElement("div");
+  el.className = "splash"; el.id = "splash";
+  el.innerHTML = `
+    <div class="card">
+      <h2>Drop a Quiz Pool to start</h2>
+      <p>Drop a <code>QuizPools_All_x.x.json</code> or <code>CompleteQuizPools_Ver.x.x.json</code></p>
+      <p>file anywhere on this page, or click the button to choose one.</p>
+      <button class="primary big-btn" id="splashUpload">Choose pool JSON</button>
+      <div class="hint">
+        Once a pool is loaded, all your edits sync to Firebase in real time, so other reviewers see your changes immediately.
+      </div>
+    </div>`;
+  el.addEventListener("click", e => {
+    if (e.target.id === "splashUpload") document.getElementById("poolFile").click();
+  });
+  return el;
+}
+
+function buildCard(q, displayIndex){
+  const ua = userAnsOf(q);
+  const reviewed = isReviewed(q);
+  const changed = isChanged(q);
+  const edited = isEdited(q);
+  const r = getR(q.__id);
+  const editing = !!r.__editing;
+  const curQ = effectiveQ(q);
+  const curOpts = effectiveOpts(q);
+  const editor = lastEditorOf(q);
+
+  const card = document.createElement("section");
+  card.className = "qcard" + (reviewed?" reviewed":"") + (changed?" changed":"") + (edited?" edited":"");
+  card.dataset.id = q.__id;
+
+  const editorPill = editor
+    ? `<span class="pill ${editor.by === REVIEWER ? "you" : "byline"}" title="Last edited by ${escapeHTML(editor.by)} at ${fmtTimeAgo(editor.at)}">by ${escapeHTML(editor.by)} &middot; ${fmtTimeAgo(editor.at)}</span>`
+    : "";
+
+  const head = document.createElement("div");
+  head.className = "qhead";
+  head.innerHTML = `
+    <div class="qmeta">
+      <span class="num">#${displayIndex}</span>
+      <span class="pill">${escapeHTML(q.topic||"")}</span>
+      ${q.subtopic ? `<span class="pill">${escapeHTML(q.subtopic)}</span>` : ""}
+      <span class="pill ${q.confidence}">conf: ${escapeHTML(q.confidence||"?")}</span>
+      <span class="pill">${escapeHTML(q.difficulty||"")}</span>
+    </div>
+    <div class="qmeta">
+      ${reviewed ? `<span class="pill reviewed">reviewed</span>` : `<span class="pill unreviewed">unreviewed</span>`}
+      ${changed ? `<span class="pill changed">answer changed</span>` : ""}
+      ${edited ? `<span class="pill edited">edited</span>` : ""}
+      ${hasImage(q) ? `<span class="pill has-img">image</span>` : ""}
+      ${editorPill}
+    </div>`;
+  card.appendChild(head);
+
+  if (hasImage(q)) {
+    const wrap = document.createElement("div");
+    wrap.className = "qimg-wrap";
+    wrap.innerHTML = `
+      <img alt="quiz image">
+      <div class="imgtools">
+        <button data-action="replaceimg">Replace</button>
+        <button data-action="removeimg">Remove</button>
+      </div>
+      <div class="imgmeta">${r.imageW||"?"}x${r.imageH||"?"} &middot; from cloud</div>`;
+    const imgEl = wrap.querySelector("img");
+    imgEl.src = r.imageUrl;
+    imgEl.addEventListener("click", () => openLightbox(r.imageUrl));
+    wrap.querySelector('[data-action="removeimg"]').addEventListener("click", () => {
+      if (confirm("Remove the attached image (deletes from cloud)?")) removeImage(q.__id);
+    });
+    wrap.querySelector('[data-action="replaceimg"]').addEventListener("click", () => {
+      const fi = card.querySelector('input.file-input'); if (fi) fi.click();
+    });
+    card.appendChild(wrap);
+  }
+
+  const fileInput = document.createElement("input");
+  fileInput.type = "file"; fileInput.accept = "image/*"; fileInput.className = "file-input";
+  fileInput.addEventListener("change", e => {
+    const f = e.target.files && e.target.files[0];
+    if (f) attachImage(q.__id, f);
+    e.target.value = "";
+  });
+  card.appendChild(fileInput);
+
+  if (editing) {
+    const box = document.createElement("div");
+    box.className = "editbox";
+    box.innerHTML = `
+      <label>Question stem</label>
+      <textarea data-edit="q"></textarea>
+      <label>Options (the correct answer follows the index)</label>
+      <div data-edit="opts"></div>
+      <button data-action="addopt" style="font-size:12px;padding:6px 10px">+ Add option</button>
+      <div class="ctrls">
+        <button data-action="save" class="primary">Save changes</button>
+        <button data-action="reset">Reset to original</button>
+        <button data-action="cancel">Cancel</button>
+      </div>`;
+    const taQ = box.querySelector('[data-edit="q"]'); taQ.value = curQ;
+    const optsHost = box.querySelector('[data-edit="opts"]');
+    function renderOptInputs(arr){
+      optsHost.innerHTML = "";
+      arr.forEach((o, i) => {
+        const row = document.createElement("div");
+        row.className = "opt-edit";
+        const lbl = document.createElement("span"); lbl.className = "lbl"; lbl.textContent = letter(i);
+        const inp = document.createElement("input"); inp.type = "text"; inp.value = o;
+        const btn = document.createElement("button"); btn.textContent = "X";
+        btn.addEventListener("click", () => {
+          const cur = Array.from(optsHost.querySelectorAll('input')).map(x => x.value);
+          cur.splice(i, 1);
+          renderOptInputs(cur);
+        });
+        row.appendChild(lbl); row.appendChild(inp); row.appendChild(btn);
+        optsHost.appendChild(row);
+      });
+    }
+    renderOptInputs(curOpts.slice());
+
+    box.querySelector('[data-action="addopt"]').addEventListener("click", () => {
+      const cur = Array.from(optsHost.querySelectorAll('input')).map(x => x.value);
+      cur.push(""); renderOptInputs(cur);
+    });
+    box.querySelector('[data-action="save"]').addEventListener("click", () => {
+      const newQ = taQ.value.trim();
+      const newOpts = Array.from(optsHost.querySelectorAll('input')).map(x => x.value).filter(s => s.length > 0);
+      if (newOpts.length < 2){ toast("Need at least 2 options", true); return; }
+      const patch = { __editing: false };
+      if (newQ && newQ !== q.q) patch.userQ = newQ; else patch.userQ = null;
+      if (JSON.stringify(newOpts) !== JSON.stringify(q.opts)) patch.userOpts = newOpts; else patch.userOpts = null;
+      const cur = STATE[q.__id] || {};
+      if (typeof cur.userAns === "number" && cur.userAns >= newOpts.length) patch.userAns = newOpts.length - 1;
+      pushQuestionUpdate(q.__id, patch);
+      toast("Question saved");
+    });
+    box.querySelector('[data-action="reset"]').addEventListener("click", () => {
+      if (!confirm("Reset to the original question and options (clears cloud edit)?")) return;
+      pushQuestionUpdate(q.__id, { userQ: null, userOpts: null, __editing: false });
+    });
+    box.querySelector('[data-action="cancel"]').addEventListener("click", () => {
+      const cur = STATE[q.__id] || {}; cur.__editing = false; STATE[q.__id] = cur;
+      rerender();
+    });
+    card.appendChild(box);
+  } else {
+    const stem = document.createElement("div");
+    stem.className = "qstem";
+    stem.textContent = curQ;
+    card.appendChild(stem);
+
+    const opts = document.createElement("div");
+    opts.className = "opts";
+    curOpts.forEach((opt, i) => {
+      const isAI = !edited && (i === q.ans);
+      const isUser = (ua === i);
+      const klass = "opt" + (isAI && isUser ? " both" : isAI ? " ai" : isUser ? " user" : "");
+      const lab = document.createElement("label");
+      lab.className = klass;
+      lab.innerHTML = `
+        <input type="radio" name="ans-${q.__id}" value="${i}" ${isUser?"checked":""}>
+        <span class="otext"><b>${letter(i)}.</b> ${escapeHTML(opt)}</span>
+        <span class="badges">
+          ${isAI ? `<span class="badge ai">AI ans</span>` : ""}
+          ${isUser ? `<span class="badge user">picked</span>` : ""}
+        </span>`;
+      lab.querySelector("input").addEventListener("change", e => {
+        const v = parseInt(e.target.value, 10);
+        pushQuestionUpdate(q.__id, { userAns: v, reviewed: true });
+      });
+      opts.appendChild(lab);
+    });
+    card.appendChild(opts);
+  }
+
+  const details = document.createElement("details");
+  details.innerHTML = `<summary>AI explanation &amp; reference</summary><div class="exp">${escapeHTML(q.exp || "(none)")}</div>`;
+  card.appendChild(details);
+
+  const noteWrap = document.createElement("details");
+  noteWrap.innerHTML = `<summary>Group note (synced)</summary>`;
+  const ta = document.createElement("textarea");
+  ta.className = "note";
+  ta.placeholder = "A shared note for this question - all reviewers see this";
+  ta.value = (getR(q.__id).note || "");
+  let noteTimer;
+  ta.addEventListener("input", () => {
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => pushQuestionUpdate(q.__id, { note: ta.value }), 600);
+  });
+  noteWrap.appendChild(ta);
+  card.appendChild(noteWrap);
+
+  const actions = document.createElement("div");
+  actions.className = "actions";
+  actions.innerHTML = `
+    <div class="left">
+      <button data-action="agree" ${editing?"disabled":""}>Agree with AI</button>
+      <button data-action="edit">${editing ? "Editing..." : (edited ? "Edit (edited)" : "Edit question")}</button>
+      <button data-action="attachimg">${hasImage(q) ? "Replace image" : "Attach image"}</button>
+      <button data-action="reviewed">Mark reviewed</button>
+      <button data-action="unreview">Unreview</button>
+    </div>
+    <div class="qmeta"><span class="pill">${q.__id}</span></div>`;
+  actions.querySelector('[data-action="agree"]').addEventListener("click", () => {
+    pushQuestionUpdate(q.__id, { userAns: q.ans, reviewed: true });
+  });
+  actions.querySelector('[data-action="edit"]').addEventListener("click", () => {
+    const cur = STATE[q.__id] || {}; cur.__editing = !editing; STATE[q.__id] = cur;
+    rerender();
+    // After re-render, scroll the card into view so the editbox isn't hidden under the footer
+    if (!editing){
+      requestAnimationFrame(() => {
+        const c = document.querySelector(`.qcard[data-id="${q.__id}"]`);
+        if (!c) return;
+        const box = c.querySelector(".editbox");
+        const target = box || c;
+        target.scrollIntoView({behavior:"smooth", block:"end"});
+      });
+    }
+  });
+  actions.querySelector('[data-action="attachimg"]').addEventListener("click", () => fileInput.click());
+  actions.querySelector('[data-action="reviewed"]').addEventListener("click", () => {
+    pushQuestionUpdate(q.__id, { reviewed: true });
+  });
+  actions.querySelector('[data-action="unreview"]').addEventListener("click", () => {
+    pushQuestionUpdate(q.__id, { reviewed: false });
+  });
+  card.appendChild(actions);
+
+  return card;
+}
+
+let allCollapsed = false;
+function rerender(){
+  root.innerHTML = "";
+
+  if (POOL.length === 0){
+    root.appendChild(renderSplash());
+    updateStats();
+    return;
+  }
+
+  const filtered = POOL.filter(passesFilters);
+  const sortMode = (document.getElementById("fSort") || {}).value || "";
+
+  if (filtered.length === 0){
+    const e = document.createElement("div"); e.className = "empty"; e.textContent = "No questions match these filters.";
+    root.appendChild(e);
+    updateStats(); updateStorageMeter();
+    return;
+  }
+
+  // Flat sort by question __id
+  if (sortMode === "id-asc" || sortMode === "id-desc"){
+    const arr = filtered.slice().sort((a, b) => {
+      const A = a.__id || ""; const B = b.__id || "";
+      return sortMode === "id-asc" ? A.localeCompare(B) : B.localeCompare(A);
+    });
+    let n = 0;
+    arr.forEach(q => { n++; root.appendChild(buildCard(q, n)); });
+    updateStats(); updateStorageMeter();
+    return;
+  }
+
+  // Default: group by topic
+  const byTopic = {};
+  filtered.forEach(q => { (byTopic[q.topic||"(none)"] = byTopic[q.topic||"(none)"]||[]).push(q); });
+
+  {
+    let n = 0;
+    Object.keys(byTopic).sort().forEach(topic => {
+      const group = document.createElement("div"); group.className = "topic-group";
+      const head = document.createElement("div"); head.className = "topic-head";
+      const arr = byTopic[topic];
+      const reviewedN = arr.filter(isReviewed).length;
+      const changedN = arr.filter(isChanged).length;
+      const editedN = arr.filter(isEdited).length;
+      const imgN = arr.filter(hasImage).length;
+      head.innerHTML = `
+        <h2>${escapeHTML(topic)}</h2>
+        <div class="topic-meta">
+          ${arr.length} questions &middot; ${reviewedN} reviewed &middot; ${changedN} changed${editedN?` &middot; ${editedN} edited`:""}${imgN?` &middot; ${imgN} with image`:""}
+          <span class="pill" style="margin-left:6px">click to toggle</span>
+        </div>`;
+      const body = document.createElement("div"); body.className = "topic-body";
+      if (allCollapsed) body.style.display = "none";
+      head.addEventListener("click", () => { body.style.display = (body.style.display === "none") ? "" : "none"; });
+      group.appendChild(head);
+      arr.forEach(q => { n++; body.appendChild(buildCard(q, n)); });
+      group.appendChild(body);
+      root.appendChild(group);
+    });
+  }
+  updateStats();
+}
+
+function updateStats(){
+  const total = POOL.length;
+  const reviewedN = POOL.filter(isReviewed).length;
+  const changedN = POOL.filter(isChanged).length;
+  const editedN = POOL.filter(isEdited).length;
+  const imageN = POOL.filter(hasImage).length;
+  document.getElementById("reviewedCount").textContent = reviewedN;
+  document.getElementById("totalCount").textContent = total;
+  document.getElementById("changedCount").textContent = changedN;
+  document.getElementById("editedCount").textContent = editedN;
+  document.getElementById("imageCount").textContent = imageN;
+  document.getElementById("progressBar").style.width = total ? ((reviewedN/total)*100).toFixed(1) + "%" : "0%";
+  if (total === 0){
+    document.getElementById("stats").innerHTML = '<span style="color:var(--muted)">No pool loaded yet - drop a JSON file or click <b>UPLOAD POOL</b> above.</span>';
+    return;
+  }
+  const conf = { high:0, medium:0, low:0 };
+  POOL.forEach(q => { if (conf[q.confidence] !== undefined) conf[q.confidence]++; });
+  const filteredCount = POOL.filter(passesFilters).length;
+  document.getElementById("stats").innerHTML = `
+    <span>Showing <b>${filteredCount}</b> of ${total}</span>
+    <span>Confidence: <span class="pill high">high ${conf.high}</span>
+          <span class="pill medium">medium ${conf.medium}</span>
+          <span class="pill low">low ${conf.low}</span></span>
+    <span>Group: <b>${reviewedN}</b> reviewed &middot; <b>${changedN}</b> changed &middot; <b>${editedN}</b> edited &middot; <b>${imageN}</b> images</span>`;
+}
+
+// ---------- Wire UI ----------
+let searchTimer;
+search.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(rerender, 120); });
+fTopic.addEventListener("change", rerender);
+fConf.addEventListener("change", rerender);
+fStatus.addEventListener("change", rerender);
+const fSortEl = document.getElementById("fSort");
+if (fSortEl) fSortEl.addEventListener("change", rerender);
+document.getElementById("btnExpand").addEventListener("click", () => {
+  allCollapsed = !allCollapsed;
+  document.querySelectorAll(".topic-body").forEach(el => { el.style.display = allCollapsed ? "none" : ""; });
+});
+document.getElementById("btnReset").addEventListener("click", () => {
+  if (!confirm("Reset only the LOCAL cache for this browser?\n\nThe cloud copy and other reviewers' work are NOT touched.\nUse this if your local view looks stale.")) return;
+  STATE = {}; rerender();
+  if (cloudOK) subscribeToCloud();  // re-pull from cloud
+});
+
+document.getElementById("btnUpload").addEventListener("click", () => {
+  document.getElementById("poolFile").click();
+});
+document.getElementById("poolFile").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0];
+  if (f) loadFromFile(f);
+  e.target.value = "";
+});
+document.getElementById("reviewerPill").addEventListener("click", async () => {
+  const cur = REVIEWER;
+  const nxt = await askReviewerName(cur);
+  if (nxt && nxt !== cur){ REVIEWER = nxt; updateReviewerPill(); toast("Now editing as " + nxt); }
+});
+
+// Drag-and-drop
+let dragDepth = 0;
+window.addEventListener("dragenter", e => {
+  if (!e.dataTransfer || !Array.from(e.dataTransfer.types).includes("Files")) return;
+  dragDepth++;
+  const sp = document.getElementById("splash"); if (sp) sp.classList.add("dragover");
+  document.body.style.outline = "2px dashed var(--accent)";
+});
+window.addEventListener("dragover", e => { e.preventDefault(); });
+window.addEventListener("dragleave", e => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0){
+    const sp = document.getElementById("splash"); if (sp) sp.classList.remove("dragover");
+    document.body.style.outline = "";
+  }
+});
+window.addEventListener("drop", e => {
+  e.preventDefault(); dragDepth = 0;
+  document.body.style.outline = "";
+  const sp = document.getElementById("splash"); if (sp) sp.classList.remove("dragover");
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) loadFromFile(f);
+});
+
+// ---------- Export ----------
+function buildExport(){
+  return POOL.map(q => {
+    const r = getR(q.__id);
+    const useQ = (typeof r.userQ === "string" && r.userQ.length > 0) ? r.userQ : q.q;
+    const useOpts = (Array.isArray(r.userOpts) && r.userOpts.length > 0) ? r.userOpts : q.opts;
+    let userAns = (typeof r.userAns === "number") ? r.userAns : q.ans;
+    if (typeof userAns !== "number" || userAns < 0 || userAns >= useOpts.length) userAns = 0;
+    const merged = {
+      q: useQ, opts: useOpts, ans: userAns, exp: q.exp || "",
+      topic: q.topic, subtopic: q.subtopic, difficulty: q.difficulty,
+      confidence: q.confidence, source: q.source, year: q.year, page: q.page,
+      hasAnswer: true,
+      __sourceId: q.__sourceId, __sourceUpdatedAt: q.__sourceUpdatedAt
+    };
+    const obj = denormalizeQuestion(merged, POOL_SCHEMA);
+    if (r.imageUrl){
+      obj.image = r.imageUrl; obj.imageW = r.imageW; obj.imageH = r.imageH;
+    }
+    if (r.note) obj._userNote = r.note;
+    if (typeof r.userAns === "number" && r.userAns !== q.ans) obj._userChanged = true;
+    if (typeof r.userQ === "string" || Array.isArray(r.userOpts)) obj._userEdited = true;
+    if (r.reviewed) obj._userReviewed = true;
+    if (r.editedBy) obj._editedBy = r.editedBy;
+    return obj;
+  });
+}
+function downloadExport(){
+  const out = buildExport();
+  const blob = new Blob([JSON.stringify(out, null, 2)], {type:"application/json"});
+  const ts = new Date().toISOString().replace(/[:.]/g,"-").slice(0,19);
+  const filename = `CompleteQuizPools_Ver.${POOL_VERSION}_groupreviewed_${ts}.json`;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 0);
+  return filename;
+}
+function doExport(){
+  if (POOL.length === 0){ toast("No pool loaded - nothing to export.", true); return; }
+  const fn = downloadExport();
+  toast(`Downloaded ${fn} (cloud snapshot, schema ${POOL_SCHEMA})`);
+}
+function sendToOwner(){
+  if (POOL.length === 0){ toast("No pool loaded - nothing to send.", true); return; }
+  const filename = downloadExport();
+  const reviewedN = POOL.filter(isReviewed).length;
+  const changedN  = POOL.filter(isChanged).length;
+  const editedN   = POOL.filter(isEdited).length;
+  const imageN    = POOL.filter(hasImage).length;
+  const subject = `EM Quiz Pool - Group review v${POOL_VERSION} (${reviewedN}/${POOL.length})`;
+  const body = [
+    `Hi ${OWNER_NAME},`, ``,
+    `Group review snapshot of EM Quiz Pool v${POOL_VERSION} (schema ${POOL_SCHEMA}).`, ``,
+    `Stats:`,
+    `  - Reviewed:        ${reviewedN} of ${POOL.length}`,
+    `  - Answer changed:  ${changedN}`,
+    `  - Text edited:     ${editedN}`,
+    `  - Images attached: ${imageN}`, ``,
+    `Please attach the file that was just downloaded:`,
+    `  ${filename}`, ``,
+    `(Look in your Downloads folder if you closed the toast.)`, ``,
+    `- sent from EM Quiz Pool Reviewer (Realtime)`
+  ].join("\n");
+  const mailto = "mailto:" + encodeURIComponent(OWNER_EMAIL)
+                + "?subject=" + encodeURIComponent(subject)
+                + "&body=" + encodeURIComponent(body);
+  window.location.href = mailto;
+  toast(`Downloaded ${filename} - now attach it to the email that just opened.`);
+}
+document.getElementById("btnExport").addEventListener("click", doExport);
+document.getElementById("btnExport2").addEventListener("click", doExport);
+document.getElementById("btnSendOwner").addEventListener("click", sendToOwner);
+document.getElementById("btnSendOwner2").addEventListener("click", sendToOwner);
+
+// ---------- Keyboard ----------
+document.addEventListener("keydown", (e) => {
+  if (POOL.length === 0) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+  const card = document.querySelector(".qcard:hover") || document.querySelector(".qcard");
+  if (!card) return;
+  const id = card.dataset.id;
+  const q = POOL.find(x => x.__id === id);
+  if (!q) return;
+  if (/^[1-9]$/.test(e.key)) {
+    const i = parseInt(e.key,10) - 1;
+    const opts = effectiveOpts(q);
+    if (i < opts.length) {
+      pushQuestionUpdate(id, { userAns: i, reviewed: true });
+      e.preventDefault();
+    }
+  } else if (e.key === "r" || e.key === "R") {
+    pushQuestionUpdate(id, { reviewed: !getR(id).reviewed });
+  } else if (e.key === "n" || e.key === "N") {
+    const cards = Array.from(document.querySelectorAll(".qcard"));
+    const idx = cards.findIndex(c => c.dataset.id === id);
+    if (idx >= 0 && idx < cards.length - 1) cards[idx+1].scrollIntoView({behavior:"smooth", block:"center"});
+  }
+});
+
+// ---------- Boot ----------
+(async () => {
+  // Soft password gate. Default password "em-review-2026". Stored unlock flag
+  // in localStorage skips this on subsequent visits from the same browser.
+  if (!await checkPasswordGate()) return;
+
+  // Ask for display name first if missing
+  REVIEWER = loadReviewerName();
+  if (!REVIEWER){
+    REVIEWER = await askReviewerName("");
+  }
+  updateReviewerPill();
+  setCloudStatus(cloudOK ? "loading" : "off", cloudOK ? "connecting..." : "offline (Firebase blocked)");
+  if (cloudOK) subscribeToActivePool();
+
+  // Load pool
+  if (tryLoadCachedUploaded()){
+    rerender();
+    return;
+  }
+  const fetched = await tryAutoFetch();
+  if (!fetched){ clearActivePool(); }
+  rerender();
+
+  // Re-render every 30s so "X seconds ago" timestamps stay fresh
+  setInterval(() => {
+    if (POOL.length > 0) rerender();
+  }, 30000);
+})();
+</script>
+</body>
+</html>

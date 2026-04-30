@@ -1,0 +1,16 @@
+// Firebase Console -> Storage -> Rules tab
+// Paste this and click Publish.
+
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    //   /quizReviews/_pools/v{X.Y}.json
+    //   /quizReviews/v{X.Y}/{qid}.jpg
+    match /quizReviews/{poolVersion}/{file} {
+      allow read, write: if true;
+    }
+
+    // Keep your existing rules for everything else here.
+  }
+}
