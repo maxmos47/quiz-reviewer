@@ -160,9 +160,30 @@
   .modal-card.shake{animation:shake .35s}
   @keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-8px)}75%{transform:translateX(8px)}}
   @media (max-width:600px){
+    /* Mobile: shrink the sticky header so cards aren't blocked */
+    header .wrap{padding:8px 12px}
+    h1{font-size:15px;display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+    .sub{display:none}                               /* tagline takes a row, hide it */
+    /* Top action buttons go to icon-only style */
+    header button{padding:7px 9px;font-size:12px}
+    header #btnSendOwner{padding:7px 11px}           /* keep the green CTA legible */
+    /* Toolbar (search+filters) becomes a single search row + collapsible filters */
+    .toolbar{gap:6px;margin-top:8px}
+    .toolbar select{display:none}                    /* hide dropdowns by default */
+    .toolbar #btnExpand{display:none}                /* hide topic-toggle by default */
+    .toolbar.open select{display:block;flex:1 1 calc(50% - 4px);min-width:0}
+    .toolbar.open #btnExpand{display:block;width:100%}
+    .toolbar #btnFilters{display:inline-flex}        /* show the new mobile-only Filters button */
+    .stats{display:none}                             /* hide stats summary by default */
+    .toolbar.open ~ .stats{display:flex}             /* show when filters expanded */
+    /* Card adjustments unchanged */
     .qhead{flex-direction:column;align-items:stretch}
     .actions{flex-direction:column;align-items:stretch}
+    /* Header pills shrink */
+    h1 .pill{font-size:10px;padding:1px 6px}
   }
+  /* Filters button is hidden on desktop; toggled-in only via mobile media */
+  #btnFilters{display:none}
 </style>
 </head>
 <body>
@@ -212,6 +233,7 @@
         <option value="id-asc">By question # (q_0001 -> q_xxxx)</option>
         <option value="id-desc">By question # (q_xxxx -> q_0001)</option>
       </select>
+      <button id="btnFilters" title="Show filters and sort options">⚙ Filters</button>
       <button id="btnExpand" title="Expand/collapse all topics">Toggle topics</button>
     </div>
     <div class="stats" id="stats"></div>
@@ -1476,6 +1498,9 @@ document.getElementById("btnLog").addEventListener("click", () => {
 });
 document.getElementById("logClose").addEventListener("click", () => {
   document.getElementById("logDrawer").classList.remove("open");
+});
+document.getElementById("btnFilters").addEventListener("click", () => {
+  document.querySelector(".toolbar").classList.toggle("open");
 });
 document.getElementById("btnExpand").addEventListener("click", () => {
   allCollapsed = !allCollapsed;
