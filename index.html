@@ -50,6 +50,11 @@
   .pill.fetched{color:#cbd5e1}
   .pill.cloud{color:#86efac;border-color:#14532d;background:#052e16}
   .pill.host{color:#c4b5fd;border-color:#5b21b6;background:#1e1b4b}
+  .pill.tag-intraining{color:#c4b5fd;border-color:#5b21b6;background:#1e1b4b}
+  .pill.tag-mcq{color:#a5f3fc;border-color:#155e75;background:#062734}
+  .pill.tag-year{color:#fcd34d;border-color:#78350f;background:#1f1305}
+  .pill.tag-series{color:#86efac;border-color:#14532d;background:#052e16}
+  .pill.tag-other{color:#cbd5e1;border-color:#334155;background:#0f172a}
   /* Activity drawer */
   .drawer{position:fixed;top:0;right:0;height:100vh;width:min(420px, 92vw);background:var(--card);border-left:1px solid var(--border);box-shadow:-12px 0 32px rgba(0,0,0,.5);transform:translateX(100%);transition:transform .25s ease;z-index:70;display:flex;flex-direction:column}
   .drawer.open{transform:translateX(0)}
@@ -273,6 +278,18 @@ try {
 }
 
 const UPLOADED_POOL_KEY = "emQuizUploadedPool";
+  // One-time cache buster: schema bumps invalidate the cached pool so it
+  // gets re-fetched from Storage with the latest normalize logic (e.g.
+  // when we add new preserved fields like q.tags).
+  const SCHEMA_VERSION_KEY = "emQuizSchemaVersion";
+  const SCHEMA_VERSION = "v3-tags-preserved";
+  try {
+    if (localStorage.getItem(SCHEMA_VERSION_KEY) !== SCHEMA_VERSION) {
+      localStorage.removeItem(UPLOADED_POOL_KEY);
+      localStorage.setItem(SCHEMA_VERSION_KEY, SCHEMA_VERSION);
+      console.log("Reviewer: cleared stale cached pool to refresh tags");
+    }
+  } catch(e){}
   const REVIEWER_UNLOCK_KEY = "emQuizUnlocked";
   // SHA-256 of the access password. To rotate:
   //   1) compute SHA-256 of new password
@@ -366,7 +383,8 @@ function normalizeQuestion(q, schema){
       q: q.question, opts: q.options, ans: q.correct, exp: q.explanation,
       topic: q.topic, subtopic: q.subtopic, difficulty: q.difficulty,
       confidence: q.confidence, source: q.source, year: q.year, page: q.page,
-      hasAnswer: q.hasAnswer
+      hasAnswer: q.hasAnswer,
+      tags: Array.isArray(q.tags) ? q.tags.slice() : []
     };
     if (q.id)        out.__sourceId = q.id;
     if (q.updatedAt) out.__sourceUpdatedAt = q.updatedAt;
@@ -382,16 +400,19 @@ function denormalizeQuestion(q, schema){
       confidence: q.confidence, source: q.source, year: q.year, page: q.page,
       hasAnswer: q.hasAnswer
     };
+    if (Array.isArray(q.tags) && q.tags.length) out.tags = q.tags.slice();
     if (q.__sourceId)        out.id        = q.__sourceId;
     if (q.__sourceUpdatedAt) out.updatedAt = q.__sourceUpdatedAt;
     return out;
   }
-  return {
+  const v1 = {
     q: q.q, opts: q.opts, ans: q.ans, exp: q.exp || "",
     topic: q.topic, subtopic: q.subtopic, difficulty: q.difficulty,
     confidence: q.confidence, source: q.source, year: q.year, page: q.page,
     hasAnswer: q.hasAnswer
   };
+  if (Array.isArray(q.tags) && q.tags.length) v1.tags = q.tags.slice();
+  return v1;
 }
 function normalizePool(arr){
   if (!Array.isArray(arr)) return { error: "Top-level JSON must be an array" };
@@ -492,7 +513,8 @@ function hostQpToInternal(id, data){
     source: data.source || 'Host',
     year: data.year || '',
     page: data.page || null,
-    hasAnswer: !!data.hasAnswer
+    hasAnswer: !!data.hasAnswer,
+    tags: Array.isArray(data.tags) ? data.tags.slice() : []
   };
 }
 // Re-attach host-added questions to POOL after setActivePool replaces the array.
@@ -674,6 +696,7 @@ function buildQPDoc(qid, mergedState){
     imageUrl:    mergedState.imageUrl || null,
     imageW:      mergedState.imageW   || null,
     imageH:      mergedState.imageH   || null,
+    tags:        Array.isArray(orig.tags) ? orig.tags.slice() : [],
     updatedAt:   serverTimestamp()
   };
 }
@@ -1127,6 +1150,17 @@ function buildCard(q, displayIndex){
       ${q.subtopic ? `<span class="pill">${escapeHTML(q.subtopic)}</span>` : ""}
       <span class="pill ${q.confidence}">conf: ${escapeHTML(q.confidence||"?")}</span>
       <span class="pill">${escapeHTML(q.difficulty||"")}</span>
+    </div>
+    <div class="qmeta">
+      ${(q.tags && q.tags.length) ? q.tags.map(t => {
+        const cls = /^\d{4}$/.test(t) ? 'tag-year'
+          : t === 'intraining' ? 'tag-intraining'
+          : t === 'mcq' ? 'tag-mcq'
+          : (typeof t === 'string' && t.endsWith('-series')) ? 'tag-series'
+          : 'tag-other';
+        return `<span class="pill ${cls}" title="tag: ${escapeHTML(t)}">${escapeHTML(t)}</span>`;
+      }).join('') : `<span class="pill tag-other" title="no tags">no tags</span>`}
+      ${q.source ? `<span class="pill tag-other" style="opacity:.55" title="source field">${escapeHTML(q.source)}</span>` : ""}
     </div>
     <div class="qmeta">
       ${reviewed ? `<span class="pill reviewed">reviewed</span>` : `<span class="pill unreviewed">unreviewed</span>`}
