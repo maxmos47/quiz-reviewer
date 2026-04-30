@@ -664,20 +664,15 @@ function subscribeToCloud(){
   try {
     const col = questionsCollection();
     UNSUB = onSnapshot(col, snap => {
-      const myName = REVIEWER || "anon";
       let updates = 0;
       snap.docChanges().forEach(ch => {
         const qid = ch.doc.id;
         if (ch.type === "removed"){
           delete STATE[qid];
-          updates++;
         } else {
-          const data = ch.doc.data();
-          STATE[qid] = data;
-          // Only rerender when ANOTHER reviewer edited — our own writes are
-          // already reflected locally (or should not re-focus a typing user).
-          if (data.editedBy !== myName) updates++;
+          STATE[qid] = ch.doc.data();
         }
+        updates++;
       });
       if (updates > 0) rerender();
       setCloudStatus("on", `synced (${snap.size} tracked)`);
@@ -1254,7 +1249,9 @@ function buildCard(q, displayIndex){
         <button data-action="cancel">Cancel</button>
       </div>`;
     const taQ = box.querySelector('[data-edit="q"]'); taQ.value = curQ;
-    const taExp = box.querySelector('[data-edit="exp"]'); if (taExp) taExp.value = effectiveExp(q);
+    const taExp = box.querySelector('[data-edit="exp"]'); if (taExp) {
+      taExp.value = effectiveExp(q);
+    }
     const optsHost = box.querySelector('[data-edit="opts"]');
     function renderOptInputs(arr){
       optsHost.innerHTML = "";
@@ -1464,11 +1461,28 @@ function restoreUiState(s){
 let allCollapsed = false;
 function rerender(){
   const __ui = captureUiState();
+  // CRITICAL: preserve the user's active card across the DOM wipe so typing,
+  // IME composition, focus, cursor and any in-flight textarea state stay intact.
+  // The card gets re-inserted into its correct position after the rebuild.
+  let __activeCard = null;
+  const __a = document.activeElement;
+  if (__a && (__a.tagName === "TEXTAREA" || __a.tagName === "INPUT")){
+    const c = __a.closest(".qcard");
+    if (c && root.contains(c)){
+      __activeCard = c;
+      c.remove();
+    }
+  }
   root.innerHTML = "";
 
   if (POOL.length === 0){
     root.appendChild(renderSplash());
-    updateStats(); restoreUiState(__ui);
+    updateStats();
+  if (__activeCard){
+    const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
+    if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
+  }
+  restoreUiState(__ui);
     return;
   }
 
@@ -1478,7 +1492,12 @@ function rerender(){
   if (filtered.length === 0){
     const e = document.createElement("div"); e.className = "empty"; e.textContent = "No questions match these filters.";
     root.appendChild(e);
-    updateStats(); restoreUiState(__ui);
+    updateStats();
+  if (__activeCard){
+    const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
+    if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
+  }
+  restoreUiState(__ui);
     return;
   }
 
@@ -1490,7 +1509,12 @@ function rerender(){
     });
     let n = 0;
     arr.forEach(q => { n++; root.appendChild(buildCard(q, n)); });
-    updateStats(); restoreUiState(__ui);
+    updateStats();
+  if (__activeCard){
+    const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
+    if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
+  }
+  restoreUiState(__ui);
     return;
   }
 
@@ -1523,7 +1547,12 @@ function rerender(){
       root.appendChild(group);
     });
   }
-  updateStats(); restoreUiState(__ui);
+  updateStats();
+  if (__activeCard){
+    const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
+    if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
+  }
+  restoreUiState(__ui);
 }
 
 function updateStats(){
