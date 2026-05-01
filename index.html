@@ -80,7 +80,7 @@
   .topic-head{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px;cursor:pointer}
   .topic-head h2{margin:0;font-size:15px;font-weight:600;color:var(--accent-2)}
   .topic-meta{color:var(--muted);font-size:12px}
-  .qcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;transition:border-color .15s ease;scroll-margin-top:140px}
+  .qcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;transition:border-color .15s ease;scroll-margin-top:140px;contain:layout style}
   .qcard.reviewed{border-color:#14532d}
   .qcard.changed{border-color:#92400e}
   .qcard.edited{border-color:#92400e}
@@ -581,6 +581,7 @@ function subscribeToHostQuestions(){
     });
     if (dirty > 0){
       populateTopicFilter();
+      // Topic filter changed → must do a full rerender (incremental can't add new cards safely)
       scheduleRerender();
     }
   }, err => console.warn('host pool listener error:', err.message));
@@ -667,7 +668,7 @@ function subscribeToCloud(){
   try {
     const col = questionsCollection();
     UNSUB = onSnapshot(col, snap => {
-      let updates = 0;
+      const changedQids = [];
       snap.docChanges().forEach(ch => {
         const qid = ch.doc.id;
         if (ch.type === "removed"){
@@ -675,9 +676,12 @@ function subscribeToCloud(){
         } else {
           STATE[qid] = ch.doc.data();
         }
-        updates++;
+        changedQids.push(qid);
       });
-      if (updates > 0) scheduleRerender();
+      if (changedQids.length > 0){
+        // Try the cheap path; fall back to a full rerender only if needed.
+        if (!applyIncrementalUpdates(changedQids)) scheduleRerender();
+      }
       setCloudStatus("on", `synced (${snap.size} tracked)`);
     }, err => {
       console.error("Firestore listener error", err);
@@ -1221,19 +1225,27 @@ function buildCard(q, displayIndex){
       if (confirm("Remove the attached image (deletes from cloud)?")) removeImage(q.__id);
     });
     wrap.querySelector('[data-action="replaceimg"]').addEventListener("click", () => {
-      const fi = card.querySelector('input.file-input'); if (fi) fi.click();
+      getFileInput().click();
     });
     card.appendChild(wrap);
   }
 
-  const fileInput = document.createElement("input");
-  fileInput.type = "file"; fileInput.accept = "image/*"; fileInput.className = "file-input";
-  fileInput.addEventListener("change", e => {
-    const f = e.target.files && e.target.files[0];
-    if (f) attachImage(q.__id, f);
-    e.target.value = "";
-  });
-  card.appendChild(fileInput);
+  // File input is created lazily on first Attach/Replace click — saves 1200
+  // hidden <input type=file> elements that mobile browsers still cost a bit of
+  // memory and accessibility-tree work for.
+  let fileInput = null;
+  function getFileInput(){
+    if (fileInput) return fileInput;
+    fileInput = document.createElement("input");
+    fileInput.type = "file"; fileInput.accept = "image/*"; fileInput.className = "file-input";
+    fileInput.addEventListener("change", e => {
+      const f = e.target.files && e.target.files[0];
+      if (f) attachImage(q.__id, f);
+      e.target.value = "";
+    });
+    card.appendChild(fileInput);
+    return fileInput;
+  }
 
   if (editing) {
     const box = document.createElement("div");
@@ -1338,17 +1350,29 @@ function buildCard(q, displayIndex){
   card.appendChild(details);
 
   const noteWrap = document.createElement("details");
-  noteWrap.innerHTML = `<summary>Group note (synced)</summary>`;
-  const ta = document.createElement("textarea");
-  ta.className = "note";
-  ta.placeholder = "A shared note for this question - all reviewers see this";
-  ta.value = (getR(q.__id).note || "");
-  let noteTimer;
-  ta.addEventListener("input", () => {
-    clearTimeout(noteTimer);
-    noteTimer = setTimeout(() => pushQuestionUpdate(q.__id, { note: ta.value }), 600);
+  // Show a small preview of the saved note in the summary so users can see
+  // there's content without expanding. The full textarea is created lazily
+  // on first open — saves 1200 textareas × IME overhead on mobile.
+  const __noteSaved = getR(q.__id).note || "";
+  const __notePreview = __noteSaved ? ` — ${escapeHTML(__noteSaved.slice(0, 40))}${__noteSaved.length > 40 ? "…" : ""}` : "";
+  noteWrap.innerHTML = `<summary>Group note (synced)${__notePreview}</summary>`;
+  let __noteHydrated = false;
+  noteWrap.addEventListener("toggle", () => {
+    if (!noteWrap.open || __noteHydrated) return;
+    __noteHydrated = true;
+    const ta = document.createElement("textarea");
+    ta.className = "note";
+    ta.placeholder = "A shared note for this question - all reviewers see this";
+    ta.value = (getR(q.__id).note || "");
+    let noteTimer;
+    ta.addEventListener("input", () => {
+      clearTimeout(noteTimer);
+      noteTimer = setTimeout(() => pushQuestionUpdate(q.__id, { note: ta.value }), 600);
+    });
+    noteWrap.appendChild(ta);
+    // Auto-focus on toggle-open so user can start typing right away
+    setTimeout(() => ta.focus(), 0);
   });
-  noteWrap.appendChild(ta);
   card.appendChild(noteWrap);
 
   const actions = document.createElement("div");
@@ -1380,7 +1404,7 @@ function buildCard(q, displayIndex){
       });
     }
   });
-  actions.querySelector('[data-action="attachimg"]').addEventListener("click", () => fileInput.click());
+  actions.querySelector('[data-action="attachimg"]').addEventListener("click", () => getFileInput().click());
   actions.querySelector('[data-action="reviewed"]').addEventListener("click", () => {
     pushQuestionUpdate(q.__id, { reviewed: true });
   });
@@ -1460,6 +1484,51 @@ function restoreUiState(s){
       }
     }
   }
+}
+// Cheap incremental DOM update: when only specific cards changed (typical
+// snapshot case), replace just those .qcard elements instead of rebuilding
+// all 1200+ cards. Returns true if it succeeded; false → caller should fall
+// back to scheduleRerender(). Skips cards that contain the focused input,
+// so the user's typing is never disrupted.
+function applyIncrementalUpdates(qids){
+  if (!Array.isArray(qids) || qids.length === 0) return true;
+  if (POOL.length === 0) return false;  // splash → full
+  if (!root.querySelector(".qcard")) return false;  // empty list → full
+
+  // Pre-check: every changed qid is in a state where incremental works
+  for (const qid of qids){
+    const oldCard = root.querySelector(`.qcard[data-id="${CSS.escape(qid)}"]`);
+    const q = POOL_MAP[qid];
+    if (q && passesFilters(q) && !oldCard) return false;       // need to add → full
+    if (oldCard && (!q || !passesFilters(q))){
+      // Card should disappear: cheap to remove inline; topic counts get a bit stale.
+      // But if the active card is the one being removed, fall back to full so we don't
+      // detach the focused element silently.
+      if (oldCard.contains(document.activeElement)) return false;
+    }
+  }
+
+  let updated = 0;
+  for (const qid of qids){
+    const oldCard = root.querySelector(`.qcard[data-id="${CSS.escape(qid)}"]`);
+    if (!oldCard) continue;
+    if (oldCard.contains(document.activeElement)) continue;    // never disturb the typing card
+    const q = POOL_MAP[qid];
+    if (!q || !passesFilters(q)){
+      oldCard.remove();
+      updated++;
+      continue;
+    }
+    // Read existing display index (#NN) so the new card keeps its number
+    const numEl = oldCard.querySelector(".qmeta .num");
+    let n = 1;
+    if (numEl){ const m = numEl.textContent.match(/(\d+)/); if (m) n = parseInt(m[1]); }
+    const newCard = buildCard(q, n);
+    oldCard.parentNode.replaceChild(newCard, oldCard);
+    updated++;
+  }
+  if (updated > 0) updateStats();
+  return true;
 }
 let __rafScheduled = false;
 function scheduleRerender(){
