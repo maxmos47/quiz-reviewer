@@ -1523,7 +1523,24 @@ function applyIncrementalUpdates(qids){
     const numEl = oldCard.querySelector(".qmeta .num");
     let n = 1;
     if (numEl){ const m = numEl.textContent.match(/(\d+)/); if (m) n = parseInt(m[1]); }
+    // Preserve which <details> panels were open so other reviewers' note edits
+    // surface immediately into already-open panels (lazy textarea hydrates from
+    // current STATE on toggle-open).
+    const __openLabels = new Set();
+    oldCard.querySelectorAll("details").forEach(d => {
+      if (!d.open) return;
+      const sum = d.querySelector("summary");
+      const label = sum ? sum.textContent.trim().split(" — ")[0].split(" —")[0].trim() : "";
+      __openLabels.add(label);
+    });
     const newCard = buildCard(q, n);
+    if (__openLabels.size > 0){
+      newCard.querySelectorAll("details").forEach(d => {
+        const sum = d.querySelector("summary");
+        const label = sum ? sum.textContent.trim().split(" — ")[0].split(" —")[0].trim() : "";
+        if (__openLabels.has(label)) d.open = true;
+      });
+    }
     oldCard.parentNode.replaceChild(newCard, oldCard);
     updated++;
   }
