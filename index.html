@@ -80,7 +80,7 @@
   .topic-head{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0 8px;border-bottom:1px solid var(--border);margin-bottom:10px;cursor:pointer}
   .topic-head h2{margin:0;font-size:15px;font-weight:600;color:var(--accent-2)}
   .topic-meta{color:var(--muted);font-size:12px}
-  .qcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;transition:border-color .15s ease;scroll-margin-top:140px;content-visibility:auto;contain-intrinsic-size:0 280px}
+  .qcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;margin:10px 0;transition:border-color .15s ease;scroll-margin-top:140px}
   .qcard.reviewed{border-color:#14532d}
   .qcard.changed{border-color:#92400e}
   .qcard.edited{border-color:#92400e}
@@ -1477,11 +1477,14 @@ function rerender(){
   // IME composition, focus, cursor and any in-flight textarea state stay intact.
   // The card gets re-inserted into its correct position after the rebuild.
   let __activeCard = null;
+  let __activeCardTopBefore = 0;
   const __a = document.activeElement;
   if (__a && (__a.tagName === "TEXTAREA" || __a.tagName === "INPUT")){
     const c = __a.closest(".qcard");
     if (c && root.contains(c)){
       __activeCard = c;
+      // Capture viewport position BEFORE detach so we can restore scroll later.
+      __activeCardTopBefore = c.getBoundingClientRect().top;
       c.remove();
     }
   }
@@ -1493,6 +1496,13 @@ function rerender(){
   if (__activeCard){
     const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
     if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
+    // Pin the active card at the same viewport position it was before — prevents
+    // the page from jumping when surrounding cards change height during rebuild.
+    if (__activeCard.isConnected){
+      const after = __activeCard.getBoundingClientRect().top;
+      const delta = after - __activeCardTopBefore;
+      if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+    }
   }
   restoreUiState(__ui);
     return;
@@ -1508,6 +1518,13 @@ function rerender(){
   if (__activeCard){
     const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
     if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
+    // Pin the active card at the same viewport position it was before — prevents
+    // the page from jumping when surrounding cards change height during rebuild.
+    if (__activeCard.isConnected){
+      const after = __activeCard.getBoundingClientRect().top;
+      const delta = after - __activeCardTopBefore;
+      if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+    }
   }
   restoreUiState(__ui);
     return;
@@ -1525,6 +1542,13 @@ function rerender(){
   if (__activeCard){
     const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
     if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
+    // Pin the active card at the same viewport position it was before — prevents
+    // the page from jumping when surrounding cards change height during rebuild.
+    if (__activeCard.isConnected){
+      const after = __activeCard.getBoundingClientRect().top;
+      const delta = after - __activeCardTopBefore;
+      if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+    }
   }
   restoreUiState(__ui);
     return;
@@ -1563,6 +1587,13 @@ function rerender(){
   if (__activeCard){
     const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
     if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
+    // Pin the active card at the same viewport position it was before — prevents
+    // the page from jumping when surrounding cards change height during rebuild.
+    if (__activeCard.isConnected){
+      const after = __activeCard.getBoundingClientRect().top;
+      const delta = after - __activeCardTopBefore;
+      if (Math.abs(delta) > 0.5) window.scrollBy(0, delta);
+    }
   }
   restoreUiState(__ui);
 }
