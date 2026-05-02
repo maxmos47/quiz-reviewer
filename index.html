@@ -238,6 +238,7 @@
       </select>
       <button id="btnFilters" title="Show filters and sort options">⚙ Filters</button>
       <button id="btnExpand" title="Expand/collapse all topics">Toggle topics</button>
+      <button id="btnTopics" title="Bulk rename topics — applies to every question in that topic">📂 Manage topics</button>
     </div>
     <div class="stats" id="stats"></div>
   </div>
@@ -1538,6 +1539,15 @@ function applyIncrementalUpdates(qids){
       // detach the focused element silently.
       if (oldCard.contains(document.activeElement)) return false;
     }
+    // Topic change → card needs to move to a different .topic-group, which
+    // incremental update can't do. Fall back to full rerender so the card lands
+    // in the correct group.
+    if (oldCard && q){
+      const groupHead = oldCard.closest(".topic-group");
+      const oldGroupTopic = groupHead ? (groupHead.querySelector("h2")?.textContent.trim() || "") : "";
+      const newTopic = effectiveTopic(q) || "(none)";
+      if (oldGroupTopic && oldGroupTopic !== newTopic) return false;
+    }
   }
 
   let updated = 0;
@@ -1588,6 +1598,92 @@ function scheduleRerender(){
     rerender();
   });
 }
+// Bulk topic management — rename or merge topics across many questions in
+// one go. Writes quizReviews/v.../questions/{qid}.userTopic AND quiz_pool/{sid}.topic
+// in a single batch (200 docs/batch to stay under Firestore's 500-write limit
+// since each question is 2 writes).
+async function bulkRenameTopic(oldTopic, newTopic){
+  if (!cloudOK){ toast("Cloud sync is off — cannot bulk-rename", true); return 0; }
+  const affected = POOL.filter(q => effectiveTopic(q) === oldTopic);
+  if (affected.length === 0) return 0;
+  const myName = REVIEWER || "anon";
+  const CHUNK = 200;
+  for (let i = 0; i < affected.length; i += CHUNK){
+    const chunk = affected.slice(i, i + CHUNK);
+    const batch = writeBatch(fbDb);
+    chunk.forEach(q => {
+      batch.set(questionDoc(q.__id), {
+        userTopic: newTopic,
+        editedBy: myName,
+        editedAt: serverTimestamp()
+      }, { merge: true });
+      // Optimistic local update so the UI shows the new topic before snapshot returns
+      STATE[q.__id] = Object.assign({}, STATE[q.__id] || {}, { userTopic: newTopic, editedBy: myName });
+      // Also push a fresh quiz_pool doc with the new topic so the Web app sees it
+      try {
+        const sid = stableIdOf(q.__id);
+        const merged = Object.assign({}, STATE[q.__id] || {}, { userTopic: newTopic });
+        const qpDoc = buildQPDoc(q.__id, merged);
+        batch.set(doc(fbDb, "quiz_pool", sid), qpDoc);
+      } catch(e){ console.warn("bulk rename: quiz_pool sync skipped for", q.__id, e.message); }
+    });
+    await batch.commit();
+  }
+  // Re-render so UI reflects the change immediately (snapshot will reconcile soon after)
+  rerender();
+  return affected.length;
+}
+
+function openTopicManager(){
+  if (POOL.length === 0){ toast("No pool loaded", true); return; }
+  const counts = new Map();
+  POOL.forEach(q => {
+    const t = effectiveTopic(q) || "(none)";
+    counts.set(t, (counts.get(t) || 0) + 1);
+  });
+  const topics = Array.from(counts.entries()).sort((a,b) => a[0].localeCompare(b[0]));
+  const m = document.createElement("div");
+  m.className = "modal";
+  m.innerHTML = `
+    <div class="modal-card" style="max-width:580px;width:92vw;max-height:80vh;display:flex;flex-direction:column">
+      <h3>📂 Manage topics</h3>
+      <p>Type a new name and click <b>Rename</b>. Every question in that topic updates instantly across all reviewers and the Web app.</p>
+      <div id="tm-list" style="overflow-y:auto;flex:1;border:1px solid var(--border);border-radius:8px;background:#070b14"></div>
+      <div class="row" style="margin-top:12px"><button class="primary" data-close>Close</button></div>
+    </div>`;
+  const list = m.querySelector("#tm-list");
+  list.innerHTML = topics.map(([t, n]) => `
+    <div class="tm-row" data-topic="${escapeHTML(t)}" style="display:flex;gap:6px;padding:8px 10px;border-bottom:1px solid var(--border);align-items:center;flex-wrap:wrap">
+      <span style="flex:0 0 auto;min-width:160px"><b>${escapeHTML(t)}</b> <span style="color:var(--muted);font-size:11px">(${n})</span></span>
+      <input type="text" placeholder="New name..." style="flex:1;min-width:140px;background:#0a0f1c;color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 8px;font:inherit;font-size:13px">
+      <button data-rename style="font-size:12px;padding:6px 10px;flex:0 0 auto">Rename</button>
+    </div>
+  `).join("");
+  document.body.appendChild(m);
+
+  m.querySelectorAll(".tm-row").forEach(row => {
+    row.querySelector("[data-rename]").addEventListener("click", async () => {
+      const oldT = row.dataset.topic;
+      const inp = row.querySelector("input");
+      const newT = inp.value.trim();
+      if (!newT){ toast("Enter a new topic name", true); inp.focus(); return; }
+      if (newT === oldT){ toast("Same as current name", true); return; }
+      if (!confirm(`Rename "${oldT}" to "${newT}"?\n\nAffects ${counts.get(oldT)} questions across all reviewers and the Web app.`)) return;
+      const btn = row.querySelector("[data-rename]");
+      btn.disabled = true; btn.textContent = "Renaming...";
+      try {
+        const n = await bulkRenameTopic(oldT, newT);
+        toast(`Renamed "${oldT}" → "${newT}" (${n} questions)`);
+        m.remove();
+        openTopicManager();  // refresh list with new counts
+      } catch(e){
+        btn.disabled = false; btn.textContent = "Rename";
+        toast("Rename failed: " + e.message, true);
+      }
+    });
+  });
+  m.querySelector("[data-close]").addEventListener("click", () => m.remove());
+}
 let allCollapsed = false;
 function rerender(){
   const __ui = captureUiState();
@@ -1611,6 +1707,7 @@ function rerender(){
   if (POOL.length === 0){
     root.appendChild(renderSplash());
     updateStats();
+  populateTopicFilter();
   if (__activeCard){
     const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
     if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
@@ -1633,6 +1730,7 @@ function rerender(){
     const e = document.createElement("div"); e.className = "empty"; e.textContent = "No questions match these filters.";
     root.appendChild(e);
     updateStats();
+  populateTopicFilter();
   if (__activeCard){
     const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
     if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
@@ -1657,6 +1755,7 @@ function rerender(){
     let n = 0;
     arr.forEach(q => { n++; root.appendChild(buildCard(q, n)); });
     updateStats();
+  populateTopicFilter();
   if (__activeCard){
     const placeholder = root.querySelector(`.qcard[data-id="${__activeCard.dataset.id}"]`);
     if (placeholder && placeholder.parentNode) placeholder.parentNode.replaceChild(__activeCard, placeholder);
@@ -1762,6 +1861,7 @@ document.getElementById("logClose").addEventListener("click", () => {
 document.getElementById("btnFilters").addEventListener("click", () => {
   document.querySelector(".toolbar").classList.toggle("open");
 });
+document.getElementById("btnTopics").addEventListener("click", openTopicManager);
 document.getElementById("btnExpand").addEventListener("click", () => {
   allCollapsed = !allCollapsed;
   document.querySelectorAll(".topic-body").forEach(el => { el.style.display = allCollapsed ? "none" : ""; });
