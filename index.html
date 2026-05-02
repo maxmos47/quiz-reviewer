@@ -716,8 +716,8 @@ function buildQPDoc(qid, mergedState){
     options:     effectiveOpt,
     correct:     effectiveAns,
     explanation: (typeof mergedState.userExp === 'string' && mergedState.userExp) ? mergedState.userExp : (mergedState.explanation || orig.exp || ''),
-    topic:       orig.topic      || 'General EM',
-    subtopic:    orig.subtopic   || '',
+    topic:       (typeof mergedState.userTopic === 'string' && mergedState.userTopic) ? mergedState.userTopic : (orig.topic || 'General EM'),
+    subtopic:    (typeof mergedState.userSubtopic === 'string') ? mergedState.userSubtopic : (orig.subtopic || ''),
     difficulty:  orig.difficulty || 'medium',
     source:      orig.source     || '',
     year:        String(orig.year || ''),
@@ -725,7 +725,7 @@ function buildQPDoc(qid, mergedState){
     imageUrl:    mergedState.imageUrl || null,
     imageW:      mergedState.imageW   || null,
     imageH:      mergedState.imageH   || null,
-    tags:        Array.isArray(orig.tags) ? orig.tags.slice() : [],
+    tags:        Array.isArray(mergedState.userTags) ? mergedState.userTags.slice() : (Array.isArray(orig.tags) ? orig.tags.slice() : []),
     updatedAt:   serverTimestamp()
   };
 }
@@ -768,6 +768,12 @@ function describePatch(patch){
   if (typeof patch.note === "string") parts.push(patch.note ? "wrote note" : "cleared note");
   if (patch.userExp === null) parts.push("reset explanation");
   else if (typeof patch.userExp === "string") parts.push("edited explanation");
+  if (patch.userTopic === null) parts.push("reset topic");
+  else if (typeof patch.userTopic === "string") parts.push("set topic: " + patch.userTopic);
+  if (patch.userSubtopic === null) parts.push("reset subtopic");
+  else if (typeof patch.userSubtopic === "string") parts.push("set subtopic");
+  if (patch.userTags === null) parts.push("reset tags");
+  else if (Array.isArray(patch.userTags)) parts.push("edited tags");
   if (patch.reviewed === true) parts.push("✓ reviewed");
   if (patch.reviewed === false) parts.push("✗ unreviewed");
   return parts.join(", ") || "update";
@@ -872,11 +878,14 @@ function isReviewed(q){ return !!getR(q.__id).reviewed; }
 function userAnsOf(q){ const r = getR(q.__id); return (typeof r.userAns === "number") ? r.userAns : null; }
 function isChanged(q){ const ua = userAnsOf(q); return ua !== null && ua !== q.ans; }
 function isAgreed(q){ const ua = userAnsOf(q); return ua !== null && ua === q.ans; }
-function isEdited(q){ const r = getR(q.__id); return (typeof r.userQ === "string") || Array.isArray(r.userOpts) || (typeof r.userExp === "string"); }
+function isEdited(q){ const r = getR(q.__id); return (typeof r.userQ === "string") || Array.isArray(r.userOpts) || (typeof r.userExp === "string") || (typeof r.userTopic === "string") || (typeof r.userSubtopic === "string") || Array.isArray(r.userTags); }
 function hasImage(q){ const r = getR(q.__id); return !!(r.imageUrl); }
 function effectiveQ(q){ const r = getR(q.__id); return (typeof r.userQ === "string" && r.userQ.length > 0) ? r.userQ : q.q; }
 function effectiveOpts(q){ const r = getR(q.__id); return (Array.isArray(r.userOpts) && r.userOpts.length > 0) ? r.userOpts : (q.opts || []); }
 function effectiveExp(q){ const r = getR(q.__id); return (typeof r.userExp === "string" && r.userExp.length > 0) ? r.userExp : (q.exp || ""); }
+function effectiveTopic(q){ const r = getR(q.__id); return (typeof r.userTopic === "string" && r.userTopic.length > 0) ? r.userTopic : (q.topic || ""); }
+function effectiveSubtopic(q){ const r = getR(q.__id); return (typeof r.userSubtopic === "string") ? r.userSubtopic : (q.subtopic || ""); }
+function effectiveTags(q){ const r = getR(q.__id); return Array.isArray(r.userTags) ? r.userTags : (Array.isArray(q.tags) ? q.tags : []); }
 function lastEditorOf(q){
   const r = getR(q.__id);
   if (!r.editedBy && !r.editedAt) return null;
@@ -1089,7 +1098,7 @@ function populateTopicFilter(){
   if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">All topics</option>';
-  const topics = Array.from(new Set(POOL.map(q => q.topic||"(none)"))).sort();
+  const topics = Array.from(new Set(POOL.map(q => effectiveTopic(q)||"(none)"))).sort();
   topics.forEach(t => {
     const o = document.createElement("option"); o.value=t; o.textContent=t; sel.appendChild(o);
   });
@@ -1118,11 +1127,11 @@ function passesFilters(q){
       const padded = "q_" + sq.padStart(4, "0");
       if (q.__id !== padded) return false;
     } else {
-      const hay = ((q.__id||"") + " " + (q.__sourceId||"") + " " + effectiveQ(q) + " " + effectiveOpts(q).join(" ") + " " + (q.subtopic||"") + " " + (q.topic||"")).toLowerCase();
+      const hay = ((q.__id||"") + " " + (q.__sourceId||"") + " " + effectiveQ(q) + " " + effectiveOpts(q).join(" ") + " " + effectiveSubtopic(q) + " " + effectiveTopic(q)).toLowerCase();
       if (!hay.includes(sq)) return false;
     }
   }
-  if (fTopic.value && (q.topic||"") !== fTopic.value) return false;
+  if (fTopic.value && effectiveTopic(q) !== fTopic.value) return false;
   if (fConf.value){
     const wanted = fConf.value.split(",");
     if (!wanted.includes(q.confidence)) return false;
@@ -1182,13 +1191,13 @@ function buildCard(q, displayIndex){
   head.innerHTML = `
     <div class="qmeta">
       <span class="num">#${displayIndex}</span>
-      <span class="pill">${escapeHTML(q.topic||"")}</span>
-      ${q.subtopic ? `<span class="pill">${escapeHTML(q.subtopic)}</span>` : ""}
+      <span class="pill">${escapeHTML(effectiveTopic(q)||"")}</span>
+      ${effectiveSubtopic(q) ? `<span class="pill">${escapeHTML(effectiveSubtopic(q))}</span>` : ""}
       <span class="pill ${q.confidence}">conf: ${escapeHTML(q.confidence||"?")}</span>
       <span class="pill">${escapeHTML(q.difficulty||"")}</span>
     </div>
     <div class="qmeta">
-      ${(q.tags && q.tags.length) ? q.tags.map(t => {
+      ${(() => { const __tags = effectiveTags(q); return __tags.length; })() ? effectiveTags(q).map(t => {
         const cls = /^\d{4}$/.test(t) ? 'tag-year'
           : t === 'intraining' ? 'tag-intraining'
           : t === 'mcq' ? 'tag-mcq'
@@ -1256,6 +1265,13 @@ function buildCard(q, displayIndex){
       <label>Options (the correct answer follows the index)</label>
       <div data-edit="opts"></div>
       <button data-action="addopt" style="font-size:12px;padding:6px 10px">+ Add option</button>
+      <label style="margin-top:14px">Topic</label>
+      <input type="text" data-edit="topic" list="mr-topics-dl" placeholder="e.g. Trauma, Cardiology">
+      <datalist id="mr-topics-dl"></datalist>
+      <label style="margin-top:8px">Subtopic</label>
+      <input type="text" data-edit="subtopic" placeholder="e.g. Aortic injury, ACS">
+      <label style="margin-top:8px">Tags <span style="color:var(--muted);font-weight:normal">(comma-separated, e.g. mcq, trauma-series, 2562)</span></label>
+      <input type="text" data-edit="tags" placeholder="comma-separated">
       <label style="margin-top:14px">Explanation &amp; reference</label>
       <textarea data-edit="exp" rows="4" placeholder="High-yield reasoning + textbook citation"></textarea>
       <div class="ctrls">
@@ -1266,6 +1282,14 @@ function buildCard(q, displayIndex){
     const taQ = box.querySelector('[data-edit="q"]'); taQ.value = curQ;
     const taExp = box.querySelector('[data-edit="exp"]'); if (taExp) {
       taExp.value = effectiveExp(q);
+    }
+    const taTopic = box.querySelector('[data-edit="topic"]'); if (taTopic) taTopic.value = effectiveTopic(q);
+    const taSubtopic = box.querySelector('[data-edit="subtopic"]'); if (taSubtopic) taSubtopic.value = effectiveSubtopic(q);
+    const taTags = box.querySelector('[data-edit="tags"]'); if (taTags) taTags.value = effectiveTags(q).join(", ");
+    const dl = box.querySelector('#mr-topics-dl');
+    if (dl){
+      const allTopics = Array.from(new Set(POOL.map(qq => effectiveTopic(qq)).filter(Boolean))).sort();
+      dl.innerHTML = allTopics.map(t => `<option value="${escapeHTML(t)}">`).join("");
     }
     const optsHost = box.querySelector('[data-edit="opts"]');
     function renderOptInputs(arr){
@@ -1296,10 +1320,18 @@ function buildCard(q, displayIndex){
       const newOpts = Array.from(optsHost.querySelectorAll('input')).map(x => x.value).filter(s => s.length > 0);
       if (newOpts.length < 2){ toast("Need at least 2 options", true); return; }
       const newExp = (taExp && taExp.value || "").trim();
+      const newTopic = (taTopic && taTopic.value || "").trim();
+      const newSubtopic = (taSubtopic && taSubtopic.value || "").trim();
+      const newTagsRaw = (taTags && taTags.value || "").trim();
+      const newTags = newTagsRaw ? newTagsRaw.split(",").map(s => s.trim()).filter(Boolean) : [];
       const patch = { __editing: false };
       if (newQ && newQ !== q.q) patch.userQ = newQ; else patch.userQ = null;
       if (JSON.stringify(newOpts) !== JSON.stringify(q.opts)) patch.userOpts = newOpts; else patch.userOpts = null;
       if (newExp && newExp !== (q.exp||"")) patch.userExp = newExp; else patch.userExp = null;
+      if (newTopic && newTopic !== (q.topic||"")) patch.userTopic = newTopic; else patch.userTopic = null;
+      if (newSubtopic !== (q.subtopic||"")) patch.userSubtopic = newSubtopic; else patch.userSubtopic = null;
+      const __origTags = Array.isArray(q.tags) ? q.tags : [];
+      if (JSON.stringify(newTags) !== JSON.stringify(__origTags)) patch.userTags = newTags; else patch.userTags = null;
       const cur = STATE[q.__id] || {};
       if (typeof cur.userAns === "number" && cur.userAns >= newOpts.length) patch.userAns = newOpts.length - 1;
       pushQuestionUpdate(q.__id, patch);
@@ -1307,7 +1339,7 @@ function buildCard(q, displayIndex){
     });
     box.querySelector('[data-action="reset"]').addEventListener("click", () => {
       if (!confirm("Reset to the original question and options (clears cloud edit)?")) return;
-      pushQuestionUpdate(q.__id, { userQ: null, userOpts: null, userExp: null, __editing: false });
+      pushQuestionUpdate(q.__id, { userQ: null, userOpts: null, userExp: null, userTopic: null, userSubtopic: null, userTags: null, __editing: false });
     });
     box.querySelector('[data-action="cancel"]').addEventListener("click", () => {
       const cur = STATE[q.__id] || {}; cur.__editing = false; STATE[q.__id] = cur;
@@ -1642,7 +1674,7 @@ function rerender(){
 
   // Default: group by topic
   const byTopic = {};
-  filtered.forEach(q => { (byTopic[q.topic||"(none)"] = byTopic[q.topic||"(none)"]||[]).push(q); });
+  filtered.forEach(q => { const t = effectiveTopic(q)||"(none)"; (byTopic[t] = byTopic[t]||[]).push(q); });
 
   {
     let n = 0;
@@ -1789,7 +1821,7 @@ function buildExport(){
     const useExp = (typeof r.userExp === "string" && r.userExp.length > 0) ? r.userExp : (q.exp || "");
     const merged = {
       q: useQ, opts: useOpts, ans: userAns, exp: useExp,
-      topic: q.topic, subtopic: q.subtopic, difficulty: q.difficulty,
+      topic: effectiveTopic(q), subtopic: effectiveSubtopic(q), difficulty: q.difficulty,
       confidence: q.confidence, source: q.source, year: q.year, page: q.page,
       hasAnswer: true,
       __sourceId: q.__sourceId, __sourceUpdatedAt: q.__sourceUpdatedAt
@@ -1800,7 +1832,10 @@ function buildExport(){
     }
     if (r.note) obj._userNote = r.note;
     if (typeof r.userAns === "number" && r.userAns !== q.ans) obj._userChanged = true;
-    if (typeof r.userQ === "string" || Array.isArray(r.userOpts)) obj._userEdited = true;
+    // Carry tags via the same effective helper
+      const __tags = effectiveTags(q); if (__tags && __tags.length) obj.tags = __tags.slice();
+      if (typeof r.userQ === "string" || Array.isArray(r.userOpts)) obj._userEdited = true;
+      if (typeof r.userTopic === "string" || typeof r.userSubtopic === "string" || Array.isArray(r.userTags)) obj._userEdited = true;
     if (r.reviewed) obj._userReviewed = true;
     if (r.editedBy) obj._editedBy = r.editedBy;
     return obj;
